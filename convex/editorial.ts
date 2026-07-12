@@ -583,3 +583,14 @@ export const getEvalRuns = query({
       .take(args.limit ?? 10);
   },
 });
+
+/** Get recent eval cases (table scan ordered by creation). */
+export const getEvalCases = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const all = await ctx.db.query("evalCases").collect();
+    return all
+      .sort((a, b) => b._creationTime - a._creationTime)
+      .slice(0, args.limit ?? 20);
+  },
+});

@@ -237,6 +237,52 @@ async function main() {
     console.log(`  ⚠ Publish failed: ${err.message}`);
   }
 
+  // ── Persist eval case + eval run ────────────────────────────────
+  const evalId = randomUUID();
+  const evalCategory = "assembly";
+  const modelName = process.env.LLM_MODEL || "gpt-5.5";
+
+  try {
+    await callM("editorial:upsertEvalCase", {
+      evalId,
+      category: evalCategory,
+      description: `E2E single-article pipeline: "${cluster.leadTitle.slice(0, 80)}"`,
+      inputDigest: JSON.stringify({ clusterId: cluster._id, bulletCount: candidate.summaryBullets.length }),
+      expectedBehavior: "Worker produces valid schema-compliant story; edition publishes with 1 story",
+      promptVersionAtCapture: modelName,
+      source: "captured",
+      provenanceEdition: editionKey,
+      provenanceRoleId: role.roleId,
+      notes: JSON.stringify({
+        validationStatus: workerResult.validationStatus,
+        reviewDecision: review.decision,
+        storyConfidence: workerResult.story.confidence,
+        workerTokens: workerResult.tokensUsed,
+        planLatencyMs: planLatency,
+        workerLatencyMs: workerResult.latencyMs,
+        bulletsProduced: workerResult.story.summaryBullets.length,
+        sourcesFound: workerResult.story.sources.length,
+      }),
+    });
+
+    const passed = workerResult.validationStatus === "valid" || workerResult.validationStatus === "repaired" ? 1 : 0;
+    const failed = passed ? 0 : 1;
+    await callM("editorial:recordEvalRun", {
+      runId: randomUUID(),
+      evalSet: "e2e-single-article",
+      total: 1,
+      passed,
+      failed,
+      passRate: passed,
+      byCategoryJson: JSON.stringify({ [evalCategory]: { total: 1, passed, failed } }),
+      promptVersion: modelName,
+      source: "manual",
+    });
+    console.log("  ✓ Eval case + run recorded");
+  } catch (err: any) {
+    console.log(`  ⚠ Eval persist failed: ${err.message}`);
+  }
+
   // ── STEP 10: Verify via public query ────────────────────────────
   console.log("\n✅ STEP 10: Verifying via public query...");
   try {
