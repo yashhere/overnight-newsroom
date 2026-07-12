@@ -122,23 +122,74 @@ const RoleSpecSchema = z.object({
   // wasNamed is NOT set by the model — computed in code against availableBeats (see editorial.ts)
 });
 
-const SectionSchema = z.object({
-  name: z.string(),
-  description: z.string(),
-  priority: z.number(),
-});
+const SectionSchema = z.preprocess((val) => {
+  // Real Hermes may return sections as plain strings like "Economy & Markets"
+  if (typeof val === "string") {
+    return { name: val, description: "", priority: 1 };
+  }
+  return val;
+}, z.object({
+  name: z.string().optional(),
+  title: z.string().optional(),
+  sectionName: z.string().optional(),
+  description: z.string().optional().default(""),
+  priority: z.number().optional().default(1),
+})).transform((s) => ({
+  name: s.name ?? s.title ?? s.sectionName ?? "Unnamed Section",
+  description: s.description,
+  priority: s.priority,
+}));
+
+// Lenient role spec — real Hermes may use name/roleName/title interchangeably
+
+// Helper: accept a string or string[], normalize to string[]
+const StringOrArray = z.union([
+  z.string().transform((s) => [s]),
+  z.array(z.string()),
+]).default([]);
+
+// Lenient dormantBeats — real Hermes may return objects or strings
+const DormantBeatSchema = z.union([
+  z.string(),
+  z.object({ beat: z.string().optional(), name: z.string().optional() }).transform((o: any) => o.beat ?? o.name ?? "unknown"),
+]);
 
 const EditorialPlanInputSchema = z.object({
-  editorialDirection: z.string(),
-  sections: z.array(SectionSchema),
+  editorialDirection: z.string().optional().default("Today's edition"),
+  sections: z.array(SectionSchema).optional().default([]),
   roles: z.array(
-    RoleSpecSchema.extend({
+    z.object({
+      roleId: z.string().optional(),
+      id: z.string().optional(),
+      name: z.string().optional(),
+      roleName: z.string().optional(),
+      title: z.string().optional(),
+      rationale: z.string().optional().default(""),
+      assignedClusterIds: StringOrArray,
+      mission: z.string().optional().default(""),
+      allowedTools: StringOrArray,
+      guardrails: StringOrArray,
+      successCriteria: StringOrArray,
+      tokenBudget: z.number().positive().optional().default(500),
+      timeBudgetMs: z.number().positive().optional().default(45000),
       parentTrace: z.string().optional(),
-    })
-  ),
-  dormantBeats: z.array(z.string()).default([]),
-  dormantRationale: z.string().default(""),
-  concurrencyLimit: z.number().int().positive().default(3),
+    }).transform((r) => ({
+      roleId: r.roleId ?? r.id ?? r.name ?? r.roleName ?? "unnamed-role",
+      name: r.name ?? r.roleName ?? r.title ?? r.roleId ?? r.id ?? "Unnamed",
+      rationale: r.rationale,
+      assignedClusterIds: r.assignedClusterIds,
+      mission: r.mission,
+      allowedTools: r.allowedTools,
+      guardrails: r.guardrails,
+      successCriteria: r.successCriteria,
+      tokenBudget: r.tokenBudget,
+      timeBudgetMs: r.timeBudgetMs,
+      parentTrace: r.parentTrace ?? "",
+    }))
+  ).optional().default([]),
+  dormantBeats: z.array(DormantBeatSchema).optional().default([]),
+  dormantRationale: z.string().optional().default(""),
+  concurrencyLimit: z.number().int().positive().optional().default(3),
 });
 
 export const EditorialPlanSchema = EditorialPlanInputSchema.transform(
@@ -147,11 +198,19 @@ export const EditorialPlanSchema = EditorialPlanInputSchema.transform(
     editionKey: "",
     editorialDirection: plan.editorialDirection,
     sections: plan.sections,
-    roles: plan.roles.map((r) => ({
-      ...r,
-      parentTrace: r.parentTrace ?? "",
-      wasNamed: false, // computed in code; default false until code computes it
+    roles: plan.roles.map((r: any) => ({
+      roleId: r.roleId,
+      name: r.name,
+      rationale: r.rationale,
+      assignedClusterIds: r.assignedClusterIds,
+      mission: r.mission,
+      allowedTools: r.allowedTools,
+      guardrails: r.guardrails,
+      successCriteria: r.successCriteria,
+      tokenBudget: r.tokenBudget,
       timeBudgetMs: r.timeBudgetMs,
+      parentTrace: r.parentTrace ?? "",
+      wasNamed: false,
     })),
     dormantBeats: plan.dormantBeats,
     dormantRationale: plan.dormantRationale,

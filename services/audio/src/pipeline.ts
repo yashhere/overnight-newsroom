@@ -5,6 +5,7 @@
 
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import type {
   WorkerResult,
   AnchorTurn,
@@ -230,6 +231,48 @@ export interface R2Uploader {
     contentType: string;
     metadata?: Record<string, string>;
   }): Promise<string>;
+}
+
+/**
+ * Create an R2 uploader using S3-compatible API.
+ * Requires: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, R2_PUBLIC_URL
+ */
+export function createR2Uploader(config?: {
+  accountId?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  bucketName?: string;
+  publicUrl?: string;
+}): R2Uploader {
+  const accountId = config?.accountId || process.env.R2_ACCOUNT_ID || "";
+  const accessKeyId = config?.accessKeyId || process.env.R2_ACCESS_KEY_ID || "";
+  const secretAccessKey = config?.secretAccessKey || process.env.R2_SECRET_ACCESS_KEY || "";
+  const bucketName = config?.bucketName || process.env.R2_BUCKET_NAME || "";
+  const publicUrl = config?.publicUrl || process.env.R2_PUBLIC_URL || "";
+  const endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
+
+  return {
+    async upload({ key, body, contentType, metadata }) {
+      const s3 = new S3Client({
+        region: "auto",
+        endpoint,
+        credentials: {
+          accessKeyId,
+          secretAccessKey,
+        },
+      });
+
+      await s3.send(new PutObjectCommand({
+        Bucket: bucketName,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+        Metadata: metadata,
+      }));
+
+      return `${publicUrl}/${key}`;
+    },
+  };
 }
 
 /**
