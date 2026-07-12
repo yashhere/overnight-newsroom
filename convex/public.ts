@@ -143,15 +143,32 @@ export const addPublicationReceipt = mutation({
 		}
 
 		const now = Date.now();
-		await ctx.db.insert("publicationReceipts", {
-			editionId: editions[0]._id,
-			editionKey: args.editionKey,
-			receiptType: args.receiptType,
-			receiptUrl: args.receiptUrl,
-			status: args.status,
-			metadata: args.metadata,
-			createdAt: now,
-		});
+
+		// Idempotent: upsert by editionKey + receiptType
+		const existing = await ctx.db
+			.query("publicationReceipts")
+			.withIndex("by_editionKey_receiptType", (q) =>
+				q.eq("editionKey", args.editionKey).eq("receiptType", args.receiptType),
+			)
+			.take(1);
+
+		if (existing.length > 0) {
+			await ctx.db.patch(existing[0]._id, {
+				receiptUrl: args.receiptUrl,
+				status: args.status,
+				metadata: args.metadata,
+			});
+		} else {
+			await ctx.db.insert("publicationReceipts", {
+				editionId: editions[0]._id,
+				editionKey: args.editionKey,
+				receiptType: args.receiptType,
+				receiptUrl: args.receiptUrl,
+				status: args.status,
+				metadata: args.metadata,
+				createdAt: now,
+			});
+		}
 
 		return { status: "ok" };
 	},
@@ -217,7 +234,8 @@ export const latestEdition = query({
 });
 
 // ---------------------------------------------------------------------------
-// getEditionByKey — public query, no authentication
+// getEditionByKey — public query, no authentication.
+// Only returns published editions; draft/archived are invisible publicly.
 // ---------------------------------------------------------------------------
 export const getEditionByKey = query({
 	args: { editionKey: v.string() },
@@ -230,6 +248,9 @@ export const getEditionByKey = query({
 		if (editions.length === 0) return null;
 
 		const edition = editions[0];
+
+		// Only expose published editions on the public page
+		if (edition.status !== "published") return null;
 
 		const stories = await ctx.db
 			.query("editionStories")

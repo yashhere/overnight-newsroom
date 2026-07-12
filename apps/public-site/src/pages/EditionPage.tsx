@@ -198,7 +198,7 @@ export function EditionPage() {
 									{story.receiptUrl ? (
 										<Alert>
 											<Radio className="h-4 w-4" />
-											<AlertTitle>Audio available</AlertTitle>
+											<AlertTitle>Media receipt</AlertTitle>
 											<AlertDescription>
 												<a
 													href={story.receiptUrl}
@@ -206,14 +206,14 @@ export function EditionPage() {
 													rel="noopener noreferrer"
 													className="underline decoration-dotted underline-offset-2 hover:text-foreground"
 												>
-													Listen to this story
+													View proof object
 												</a>
 											</AlertDescription>
 										</Alert>
 									) : (
 										<div className="flex items-center gap-2 text-xs text-muted-foreground">
 											<Radio className="h-3 w-3" />
-											<span>Audio not yet available</span>
+											<span>No media receipt yet</span>
 										</div>
 									)}
 								</CardContent>
