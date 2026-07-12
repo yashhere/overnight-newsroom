@@ -11,6 +11,13 @@ import {
   assembleEdition,
   defaultHermesSession,
 } from "../ingestion/src/editorial.js";
+import {
+  assembleScript,
+  addPronunciationHints,
+  createElevenLabsClient,
+  createR2Uploader,
+  produceEditionAudio,
+} from "../audio/src/pipeline.js";
 
 const convexUrl = process.env.CONVEX_URL;
 const secret = process.env.INGESTION_API_SECRET;
@@ -195,6 +202,60 @@ async function main() {
     console.log(`  Severity:   ${review.revisionNote.severity}`);
   }
   console.log();
+
+  // ── STEP 7b: Generate Audio (ElevenLabs + R2) ─────────────────
+  console.log("🎙️  STEP 7b: Generating audio (ElevenLabs TTS → R2)...");
+
+  const elevenlabs = createElevenLabsClient();
+  const uploader = createR2Uploader();
+
+  // Build script from worker result + add pronunciation hints
+  const script = addPronunciationHints(
+    assembleScript([workerResult], editionKey)
+  );
+  console.log(`  Script: ${script.turns.length} turns, ${script.wordCount} words`);
+
+  let editionAudio: any = null;
+  try {
+    const audioResult = await produceEditionAudio(script, elevenlabs, uploader);
+    editionAudio = audioResult.editionAudio;
+    console.log(`  ✓ ${audioResult.segments.length} segments generated`);
+    console.log(`  Full audio: ${editionAudio.fullAudioUrl}`);
+    console.log(`  Duration:   ${editionAudio.totalDurationMs}ms`);
+    console.log(`  Chapters:   ${editionAudio.chapters.length}`);
+    console.log(`  Cost:       ${editionAudio.totalCostCents}c`);
+
+    // Persist segments to Convex
+    for (const seg of audioResult.segments) {
+      await callM("judge:upsertAudioSegment", {
+        segmentId: seg.segmentId,
+        editionKey: seg.editionKey,
+        anchor: seg.anchor,
+        turnIndex: seg.turnIndex,
+        text: seg.text,
+        voiceId: seg.voiceId,
+        durationMs: seg.durationMs,
+        clipUrl: seg.clipUrl,
+        costCents: seg.costCents,
+        latencyMs: seg.latencyMs,
+      });
+    }
+    console.log(`  ✓ ${audioResult.segments.length} segments persisted`);
+
+    // Persist edition audio
+    await callM("judge:upsertEditionAudio", {
+      editionKey: editionAudio.editionKey,
+      totalDurationMs: editionAudio.totalDurationMs,
+      fullAudioUrl: editionAudio.fullAudioUrl,
+      chaptersJson: JSON.stringify(editionAudio.chapters),
+      segmentIds: audioResult.segments.map((s: any) => s.segmentId),
+      totalCostCents: editionAudio.totalCostCents,
+      totalLatencyMs: editionAudio.totalLatencyMs,
+    });
+    console.log(`  ✓ Edition audio persisted`);
+  } catch (err: any) {
+    console.log(`  ⚠ Audio generation failed (non-fatal): ${err.message}`);
+  }
 
   // ── STEP 8: Assemble Edition ────────────────────────────────────
   console.log("📦 STEP 8: Assembling edition...");
