@@ -189,6 +189,17 @@ export default defineSchema({
     sourceUrl: v.optional(v.string()),
     sourceName: v.optional(v.string()),
     receiptUrl: v.optional(v.string()),
+    badges: v.optional(
+      v.array(
+        v.union(
+          v.literal("new"),
+          v.literal("developing"),
+          v.literal("follow-up"),
+          v.literal("breaking"),
+          v.literal("correction")
+        )
+      )
+    ),
     sortOrder: v.number(),
     createdAt: v.number(),
   })
