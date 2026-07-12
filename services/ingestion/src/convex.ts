@@ -186,3 +186,113 @@ export async function markThin(args: {
     ...args,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Editorial mutations (ONR-004)
+// ---------------------------------------------------------------------------
+
+export async function upsertEditorialPlan(args: {
+  planId: string;
+  editionKey: string;
+  editorialDirection: string;
+  sectionNames: string[];
+  sectionDescriptions: string[];
+  roleIds: string[];
+  dormantBeats: string[];
+  dormantRationale: string;
+  totalTokenBudget: number;
+  concurrencyLimit: number;
+  inputDigest: string;
+  rawHermesResponse: string;
+  costCents: number;
+}) {
+  return callMutation("editorial:upsertEditorialPlan", {
+    secret: secret(),
+    ...args,
+  });
+}
+
+export async function upsertRoleSpec(args: {
+  planId: string;
+  editionKey: string;
+  roleId: string;
+  name: string;
+  rationale: string;
+  assignedClusterIds: string[];
+  mission: string;
+  allowedTools: string[];
+  guardrails: string[];
+  successCriteria: string[];
+  parentTrace: string;
+  tokenBudget: number;
+  timeBudgetMs: number;
+  wasNamed: boolean;
+  rawHermesResponse: string;
+}) {
+  return callMutation("editorial:upsertRoleSpec", {
+    secret: secret(),
+    ...args,
+  });
+}
+
+export async function upsertWorkerResult(args: {
+  editionKey: string;
+  resultId: string;
+  roleId: string;
+  title: string;
+  summary: string;
+  summaryBullets: string[];
+  beat: string;
+  confidence: number;
+  sourceUrls: string[];
+  sourceNames: string[];
+  meetsCriteria: boolean;
+  selfAssessmentReasoning: string;
+  validationStatus: "valid" | "invalid" | "repaired";
+  validationErrors: string[];
+  repairAttempted: boolean;
+  repairDetail?: string;
+  rawResponse: string;
+  tokensUsed: number;
+  estimatedCostCents: number;
+  latencyMs: number;
+}) {
+  return callMutation("editorial:upsertWorkerResult", {
+    secret: secret(),
+    ...args,
+  });
+}
+
+export async function recordRevision(args: {
+  loopId: string;
+  editionKey: string;
+  roleId: string;
+  originalResultId: string;
+  revisedResultId?: string;
+  concerns: string[];
+  suggestions: string[];
+  severity: "required" | "optional";
+  disposition: "pending" | "accepted" | "rejected";
+  round: number;
+  createdAt: number;
+}) {
+  return callMutation("editorial:recordRevision", {
+    secret: secret(),
+    ...args,
+  });
+}
+
+export async function saveMemory(args: {
+  memoryId: string;
+  kind: "lesson" | "role_pattern" | "editorial_rule" | "guardrail";
+  content: string;
+  tags: string[];
+  provenance: string;
+  confidence: number;
+  createdAt: number;
+}) {
+  return callMutation("editorial:saveMemory", {
+    secret: secret(),
+    ...args,
+  });
+}
