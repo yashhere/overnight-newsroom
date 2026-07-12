@@ -1,0 +1,36 @@
+# Node
+node_modules/
+dist/
+
+# Env files (never commit secrets)
+.env
+.env.*
+*.env
+!.env.example
+!**/.env.example
+/etc/newsroom.env
+
+# Convex generated code
+convex/_generated/
+
+# Build outputs
+services/ingestion/dist/
+*.tsbuildinfo
+
+# Local tool/session state
+.pi/
+.pi-subagents/
+.convex/local/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

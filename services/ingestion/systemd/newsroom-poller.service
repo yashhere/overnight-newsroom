@@ -1,0 +1,10 @@
+[Unit]
+Description=Overnight Newsroom RSS poller
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=azureuser
+WorkingDirectory=/home/azureuser/overnight-newsroom/services/ingestion
+EnvironmentFile=/etc/newsroom.env
+ExecStart=/usr/bin/node dist/poller.js
