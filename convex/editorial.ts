@@ -340,7 +340,7 @@ export const saveMemory = mutation({
 // Queries (public — read from Mission Control)
 // ---------------------------------------------------------------------------
 
-/** Get the latest editorial plan for an edition. */
+/** Get the latest editorial plan for an edition (redacted — no raw Hermes output). */
 export const getLatestPlan = query({
   args: { editionKey: v.string() },
   handler: async (ctx, args) => {
@@ -350,31 +350,86 @@ export const getLatestPlan = query({
       .take(1);
 
     if (plans.length === 0) return null;
-    return plans[0];
+    const p = plans[0];
+    // Strip raw provider output from public surface
+    return {
+      planId: p.planId,
+      editionKey: p.editionKey,
+      editorialDirection: p.editorialDirection,
+      sectionNames: p.sectionNames,
+      roleIds: p.roleIds,
+      dormantBeats: p.dormantBeats,
+      dormantRationale: p.dormantRationale,
+      totalTokenBudget: p.totalTokenBudget,
+      concurrencyLimit: p.concurrencyLimit,
+      inputDigest: p.inputDigest,
+      costCents: p.costCents,
+      createdAt: p.createdAt,
+    };
   },
 });
 
-/** Get all role specs for a plan. */
+/** Get all role specs for a plan (redacted — no raw Hermes output). */
 export const getRoleSpecs = query({
   args: { planId: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const specs = await ctx.db
       .query("roleSpecs")
       .withIndex("by_planId", (q) => q.eq("planId", args.planId))
       .collect();
+    // Strip raw provider output
+    return specs.map((rs) => ({
+      planId: rs.planId,
+      editionKey: rs.editionKey,
+      roleId: rs.roleId,
+      name: rs.name,
+      rationale: rs.rationale,
+      assignedClusterIds: rs.assignedClusterIds,
+      mission: rs.mission,
+      allowedTools: rs.allowedTools,
+      guardrails: rs.guardrails,
+      successCriteria: rs.successCriteria,
+      parentTrace: rs.parentTrace,
+      tokenBudget: rs.tokenBudget,
+      timeBudgetMs: rs.timeBudgetMs,
+      wasNamed: rs.wasNamed,
+      createdAt: rs.createdAt,
+    }));
   },
 });
 
-/** Get the worker results for an edition. */
+/** Get the worker results for an edition (redacted — no raw provider output). */
 export const getWorkerResults = query({
   args: { editionKey: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const results = await ctx.db
       .query("workerResults")
       .withIndex("by_editionKey_roleId", (q) =>
         q.eq("editionKey", args.editionKey)
       )
       .collect();
+    return results.map((wr) => ({
+      editionKey: wr.editionKey,
+      resultId: wr.resultId,
+      roleId: wr.roleId,
+      title: wr.title,
+      summary: wr.summary,
+      summaryBullets: wr.summaryBullets,
+      beat: wr.beat,
+      confidence: wr.confidence,
+      sourceUrls: wr.sourceUrls,
+      sourceNames: wr.sourceNames,
+      meetsCriteria: wr.meetsCriteria,
+      selfAssessmentReasoning: wr.selfAssessmentReasoning,
+      validationStatus: wr.validationStatus,
+      validationErrors: wr.validationErrors,
+      repairAttempted: wr.repairAttempted,
+      repairDetail: wr.repairDetail,
+      tokensUsed: wr.tokensUsed,
+      estimatedCostCents: wr.estimatedCostCents,
+      latencyMs: wr.latencyMs,
+      createdAt: wr.createdAt,
+    }));
   },
 });
 
@@ -401,9 +456,9 @@ export const getRecentMemories = query({
         .order("desc")
         .take(max);
     }
-    // Fall back to scanning — for the small memory set this is fine
     return await ctx.db
       .query("newsroomMemory")
+      .withIndex("by_createdAt")
       .order("desc")
       .take(max);
   },

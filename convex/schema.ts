@@ -317,5 +317,6 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_kind_createdAt", ["kind", "createdAt"])
+    .index("by_createdAt", ["createdAt"])
     .index("by_provenance", ["provenance"]),
 });

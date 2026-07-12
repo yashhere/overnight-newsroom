@@ -38,6 +38,12 @@ import type {
 } from "./types.js";
 import type { RoleDerivationInput } from "./manager.js";
 
+const RAW_RESPONSE_MAX_CHARS = 2000;
+
+function capRaw(text: string): string {
+  return text.slice(0, RAW_RESPONSE_MAX_CHARS);
+}
+
 // ---------------------------------------------------------------------------
 // Types for the orchestration results
 // ---------------------------------------------------------------------------
@@ -87,6 +93,7 @@ export interface HermesSession {
     temperature?: number;
     maxTokens?: number;
     jsonMode?: boolean;
+    timeoutMs?: number;
   }): Promise<{
     rawContent: string;
     usage?: {
@@ -116,7 +123,7 @@ export async function defaultHermesSession(
   params: Parameters<HermesSession>[0]
 ): ReturnType<HermesSession> {
   const config = getHermesConfig();
-  const timeoutMs = Number(process.env.HERMES_TIMEOUT_MS || "45000");
+  const timeoutMs = params.timeoutMs ?? Number(process.env.HERMES_TIMEOUT_MS || "45000");
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.max(timeoutMs, 1000));
@@ -209,9 +216,14 @@ export async function planEdition(
   });
   plan.createdAt = Date.now();
 
-  // Fill in parent tracks
+  // Fill in parent tracks and compute wasNamed against available beats
+  const knownBeats = new Set(input.availableBeats.map((b: string) => b.toLowerCase()));
   for (const role of plan.roles) {
     role.parentTrace = plan.planId;
+    // wasNamed: true only if the roleId maps directly to a known beat name.
+    // "novel" = roleId not present in availableBeats AND role name doesn't
+    // match any beat. This is computed in code, not trusted from the model.
+    role.wasNamed = knownBeats.has(role.roleId.toLowerCase());
   }
 
   const cost = buildCostEstimate(
@@ -253,6 +265,7 @@ export async function runWorker(
     temperature: 0.3,
     maxTokens: Math.min(role.tokenBudget, 800),
     jsonMode: true,
+    timeoutMs: role.timeBudgetMs,
   });
 
   const latencyMs = callResult.latencyMs;
@@ -312,7 +325,7 @@ export async function runWorker(
           sources: [],
         },
         selfAssessment: { meetsCriteria: false, reasoning: "Validation failed" },
-        rawResponse: rawContent,
+        rawResponse: capRaw(rawContent),
         validationStatus: "invalid",
         validationErrors: validation.errors,
         repairAttempted: true,
@@ -542,21 +555,43 @@ export async function runWorkersWithReview(
         ).totalTokens;
         revised.latencyMs = revisionResult.latencyMs;
 
-        // Replace the result with the revised version
-        results[i] = revised;
-        loop.revisedResultId = revised.resultId;
-        loop.disposition = "accepted";
+        // Re-review the revision before accepting (the manager must sign off)
+        const reReview = await reviewWorkerOutput(role, revised, hermes);
 
-        // Record the successful revision as a memory
-        memories.push({
-          memoryId: randomUUID(),
-          kind: "role_pattern",
-          content: `Role ${role.roleId} succeeded after revision. Concerns: ${review.revisionNote.concerns.join("; ")}. Suggestions applied: ${review.revisionNote.suggestions.join("; ")}`,
-          tags: ["revision", role.roleId, "success"],
-          provenance: `edition-${plan.editionKey}`,
-          confidence: 0.7,
-          createdAt: Date.now(),
-        });
+        if (reReview.decision === "accept") {
+          // Replace the result with the revised version
+          results[i] = revised;
+          loop.revisedResultId = revised.resultId;
+          loop.disposition = "accepted";
+
+          // Record the successful revision as a memory
+          memories.push({
+            memoryId: randomUUID(),
+            kind: "role_pattern",
+            content: `Role ${role.roleId} succeeded after revision. Concerns: ${review.revisionNote.concerns.join("; ")}. Suggestions applied: ${review.revisionNote.suggestions.join("; ")}`,
+            tags: ["revision", role.roleId, "success"],
+            provenance: `edition-${plan.editionKey}`,
+            confidence: 0.7,
+            createdAt: Date.now(),
+          });
+        } else {
+          // Revision met schema but still didn't pass manager re-review
+          loop.disposition = "rejected";
+          result.validationStatus = "invalid";
+          result.validationErrors = [
+            `Revision passed schema but manager still rejected: ${reReview.commentary}`,
+          ];
+
+          memories.push({
+            memoryId: randomUUID(),
+            kind: "lesson",
+            content: `Role ${role.roleId} revision passed schema but failed re-review. Concerns from original: ${review.revisionNote.concerns.join("; ")}`,
+            tags: ["revision", role.roleId, "re-review-failure"],
+            provenance: `edition-${plan.editionKey}`,
+            confidence: 0.5,
+            createdAt: Date.now(),
+          });
+        }
       } else {
         loop.disposition = "rejected";
         result.validationStatus = "invalid";
@@ -764,4 +799,117 @@ export function diffRoleGraphs(
     bHasNamed: planB.roles.filter((r) => r.wasNamed).length,
     bHasNovel: planB.roles.filter((r) => !r.wasNamed).length,
   };
+}
+
+// ---------------------------------------------------------------------------
+// persistOrchestration — persist the full orchestration result to Convex
+// ---------------------------------------------------------------------------
+
+export interface ConvexClient {
+  upsertEditorialPlan(args: Record<string, unknown>): Promise<unknown>;
+  upsertRoleSpec(args: Record<string, unknown>): Promise<unknown>;
+  upsertWorkerResult(args: Record<string, unknown>): Promise<unknown>;
+  recordRevision(args: Record<string, unknown>): Promise<unknown>;
+  saveMemory(args: Record<string, unknown>): Promise<unknown>;
+}
+
+export async function persistOrchestration(
+  result: OrchestrationResult,
+  convex: ConvexClient
+): Promise<void> {
+  const { plan, workerResults, revisionLoops, memories } = result;
+
+  // 1. Persist the editorial plan
+  await convex.upsertEditorialPlan({
+    planId: plan.planId,
+    editionKey: plan.editionKey,
+    editorialDirection: plan.editorialDirection,
+    sectionNames: plan.sections.map((s) => s.name),
+    sectionDescriptions: plan.sections.map((s) => s.description),
+    roleIds: plan.roles.map((r) => r.roleId),
+    dormantBeats: plan.dormantBeats,
+    dormantRationale: plan.dormantRationale,
+    totalTokenBudget: plan.totalTokenBudget,
+    concurrencyLimit: plan.concurrencyLimit,
+    inputDigest: plan.inputDigest,
+    rawHermesResponse: capRaw(JSON.stringify(plan)),
+    costCents: result.totalCostCents,
+  });
+
+  // 2. Persist each role spec
+  for (const role of plan.roles) {
+    await convex.upsertRoleSpec({
+      planId: plan.planId,
+      editionKey: plan.editionKey,
+      roleId: role.roleId,
+      name: role.name,
+      rationale: role.rationale,
+      assignedClusterIds: role.assignedClusterIds,
+      mission: role.mission,
+      allowedTools: role.allowedTools,
+      guardrails: role.guardrails,
+      successCriteria: role.successCriteria,
+      parentTrace: role.parentTrace,
+      tokenBudget: role.tokenBudget,
+      timeBudgetMs: role.timeBudgetMs,
+      wasNamed: role.wasNamed,
+      rawHermesResponse: capRaw(JSON.stringify({ roleId: role.roleId, mission: role.mission })),
+    });
+  }
+
+  // 3. Persist each worker result
+  for (const wr of workerResults) {
+    await convex.upsertWorkerResult({
+      editionKey: wr.editionKey,
+      resultId: wr.resultId,
+      roleId: wr.roleId,
+      title: wr.story.title,
+      summary: wr.story.summary,
+      summaryBullets: wr.story.summaryBullets,
+      beat: wr.story.beat,
+      confidence: wr.story.confidence,
+      sourceUrls: wr.story.sources.map((s) => s.url),
+      sourceNames: wr.story.sources.map((s) => s.name),
+      meetsCriteria: wr.selfAssessment.meetsCriteria,
+      selfAssessmentReasoning: wr.selfAssessment.reasoning.slice(0, 500),
+      validationStatus: wr.validationStatus,
+      validationErrors: wr.validationErrors,
+      repairAttempted: wr.repairAttempted,
+      repairDetail: wr.repairDetail,
+      rawResponse: capRaw(wr.rawResponse),
+      tokensUsed: wr.tokensUsed,
+      estimatedCostCents: wr.estimatedCostCents,
+      latencyMs: wr.latencyMs,
+    });
+  }
+
+  // 4. Persist each revision loop
+  for (const loop of revisionLoops) {
+    await convex.recordRevision({
+      loopId: loop.loopId,
+      editionKey: loop.editionKey,
+      roleId: loop.roleId,
+      originalResultId: loop.originalResultId,
+      revisedResultId: loop.revisedResultId,
+      concerns: loop.revisionNote.concerns,
+      suggestions: loop.revisionNote.suggestions,
+      severity: loop.revisionNote.severity,
+      disposition: loop.disposition,
+      round: loop.round,
+      createdAt: loop.createdAt,
+    });
+  }
+
+  // 5. Persist each memory entry
+  for (const mem of memories) {
+    await convex.saveMemory({
+      memoryId: mem.memoryId,
+      kind: mem.kind,
+      content: capRaw(mem.content),
+      tags: mem.tags,
+      provenance: mem.provenance,
+      confidence: mem.confidence,
+      createdAt: mem.createdAt,
+    });
+  }
 }

@@ -119,6 +119,7 @@ const RoleSpecSchema = z.object({
   successCriteria: z.array(z.string()),
   tokenBudget: z.number().positive(),
   timeBudgetMs: z.number().positive(),
+  // wasNamed is NOT set by the model — computed in code against availableBeats (see editorial.ts)
 });
 
 const SectionSchema = z.object({
@@ -133,12 +134,11 @@ const EditorialPlanInputSchema = z.object({
   roles: z.array(
     RoleSpecSchema.extend({
       parentTrace: z.string().optional(),
-      wasNamed: z.boolean().optional(),
     })
   ),
   dormantBeats: z.array(z.string()).default([]),
   dormantRationale: z.string().default(""),
-  concurrencyLimit: z.number().optional(),
+  concurrencyLimit: z.number().int().positive().default(3),
 });
 
 export const EditorialPlanSchema = EditorialPlanInputSchema.transform(
@@ -150,13 +150,13 @@ export const EditorialPlanSchema = EditorialPlanInputSchema.transform(
     roles: plan.roles.map((r) => ({
       ...r,
       parentTrace: r.parentTrace ?? "",
-      wasNamed: r.wasNamed ?? false,
+      wasNamed: false, // computed in code; default false until code computes it
       timeBudgetMs: r.timeBudgetMs,
     })),
     dormantBeats: plan.dormantBeats,
     dormantRationale: plan.dormantRationale,
     totalTokenBudget: plan.roles.reduce((sum, r) => sum + r.tokenBudget, 0),
-    concurrencyLimit: plan.concurrencyLimit ?? 3,
+    concurrencyLimit: plan.concurrencyLimit,
     createdAt: Date.now(),
     inputDigest: "",
   })
@@ -380,7 +380,7 @@ export function parseWorkerResultJson(
     editionKey,
     story: { ...parsed.story },
     selfAssessment: { ...parsed.selfAssessment },
-    rawResponse: rawContent,
+    rawResponse: rawContent.slice(0, 2000),
     validationStatus: "valid",
     validationErrors: [],
     repairAttempted: false,
