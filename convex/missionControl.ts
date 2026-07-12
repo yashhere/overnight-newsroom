@@ -470,6 +470,46 @@ export const getMissionControl = query({
       });
     }
 
+    // Fallback: worker results without matching role specs
+    // (e.g., when there's no editorial plan yet, or plan uses different roleIds)
+    const specRoleIds = new Set(roleSpecs.map((rs) => rs.roleId));
+    for (const wr of workerResults) {
+      if (specRoleIds.has(wr.roleId)) continue;
+
+      const roleTraces = traceNodes.filter(
+        (tn) => tn.roleId === wr.roleId,
+      );
+      const totalTokens =
+        wr.tokensUsed +
+        roleTraces.reduce((sum, tn) => sum + (tn.tokensUsed ?? 0), 0);
+      const totalCost =
+        wr.estimatedCostCents +
+        roleTraces.reduce(
+          (sum, tn) => sum + (tn.estimatedCostCents ?? 0),
+          0,
+        );
+
+      let agentStatus = "completed";
+      if (wr.validationStatus === "invalid") {
+        agentStatus = "failed";
+      } else if (wr.validationStatus === "repaired") {
+        agentStatus = "completed";
+      }
+
+      agents.push({
+        roleId: wr.roleId,
+        roleName: wr.roleId, // fallback name — roleId is descriptive enough
+        beat: wr.beat,
+        assignment: wr.title.slice(0, 80),
+        status: agentStatus,
+        isEditorInChief: false,
+        latencyMs: wr.latencyMs,
+        totalTokens,
+        totalCostCents: totalCost,
+        traceNodeCount: roleTraces.length,
+      });
+    }
+
     // ══════════════════════════════════════════════════════════
     // Build story board (center pane — kanban columns)
     // ══════════════════════════════════════════════════════════

@@ -28,3 +28,7 @@ export function useEditionByKey(editionKey: string | undefined) {
 export function useNewsroomHealth() {
   return useQuery(api.public.getNewsroomHealth, {});
 }
+
+export function usePublishedEditions() {
+  return useQuery(api.public.getPublishedEditions, {});
+}

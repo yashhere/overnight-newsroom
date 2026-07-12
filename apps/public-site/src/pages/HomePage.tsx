@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,8 @@ import {
 } from "lucide-react";
 import {
   useLatestEdition,
+  useEditionByKey,
+  usePublishedEditions,
   useNewsroomHealth,
   type EditionPayload,
   type EditionStory,
@@ -511,13 +513,37 @@ function ReceiptBar({
 // ═══════════════════════════════════════════════════════════════
 
 export function HomePage() {
-  const data = useLatestEdition();
+  const publishedEditions = usePublishedEditions();
+  const [selectedEditionKey, setSelectedEditionKey] = useState<string | null>(null);
+
+  // Use selected edition or fall back to latest
+  const latestData = useLatestEdition();
+  const selectedData = useEditionByKey(selectedEditionKey ?? undefined);
+  const data = selectedEditionKey ? selectedData : latestData;
   const health = useNewsroomHealth();
   const playerRef = useRef<AudioPlayerHandle>(null);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 md:py-12">
       <Masthead publishedAt={data?.edition.publishedAt} health={health} />
+
+      {/* Edition selector */}
+      {publishedEditions && publishedEditions.length > 1 && (
+        <div className="mb-6 flex items-center justify-center gap-2">
+          <select
+            value={selectedEditionKey ?? ""}
+            onChange={(e) => setSelectedEditionKey(e.target.value || null)}
+            className="rounded border bg-white px-3 py-1.5 text-sm font-medium"
+          >
+            <option value="">Latest edition</option>
+            {publishedEditions.map((ed) => (
+              <option key={ed.editionKey} value={ed.editionKey}>
+                {ed.title} — {ed.publishedAt ? new Date(ed.publishedAt).toLocaleDateString() : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {data === undefined && <LoadingSkeleton />}
 

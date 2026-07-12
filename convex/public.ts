@@ -479,6 +479,29 @@ export const getNewsroomHealth = query({
   },
 });
 
+// ---------------------------------------------------------------------------
+// getPublishedEditions — public query, list published editions for selector
+// ---------------------------------------------------------------------------
+export const getPublishedEditions = query({
+  args: {},
+  handler: async (ctx) => {
+    const editions = await ctx.db
+      .query("editions")
+      .withIndex("by_status_publishedAt", (q) =>
+        q.eq("status", "published"),
+      )
+      .order("desc")
+      .take(20);
+
+    return editions.map((e) => ({
+      editionKey: e.editionKey,
+      title: e.title,
+      publishedAt: e.publishedAt,
+      createdAt: e.createdAt,
+    }));
+  },
+});
+
 // ══════════════════════════════════════════════════════════════
 // Internal — compute newsroom health from recent runs + events
 // ══════════════════════════════════════════════════════════════
