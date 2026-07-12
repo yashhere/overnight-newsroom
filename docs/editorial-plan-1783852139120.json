@@ -1,0 +1,132 @@
+{
+  "editorialDirection": "Tragedy leads, diplomacy follows, sports crisis looms, culture endures. The July 12 edition opens with the Vietnam boat accident — 15 Indian lives lost, 16 survivors returning home today, repatriation underway with Embassy coordination. The Australia-India uranium deal, signed during PM Modi's visit, marks a decade-in-the-making diplomatic milestone with energy security and critical-minerals dimensions. Sports covers India's T20I batting collapse ahead of Tuesday's ODI series and Tejas Nandakumar's CWG exclusion on a classification technicality. The culture section profiles six fading traditional performance arts — a feature with no time pressure, placed at edition close. MILAN-2026 is killed: five months stale.",
+  "sections": [
+    {
+      "name": "Front Page",
+      "description": "Lead stories of the day — breaking tragedy and major diplomatic development. Vietnam boat accident (A1 lead): 15 dead, survivors returning, Embassy repatriation, PM Modi statement, Vietnam investigating. Australia-India uranium deal (A2): signed July 9, implements 2015 nuclear cooperation agreement, 100 GW nuclear target by 2047, CECA fast-track, critical minerals corridor, maritime security roadmap.",
+      "priority": 1
+    },
+    {
+      "name": "Sports",
+      "description": "Cricket batting crisis: India lost back-to-back T20I series (4-0 England, 2-0 Ireland), expert panel criticism (Karthik, Gavaskar, Bhogle), ODI series preview ahead of July 14 start. Para-swimmer Tejas Nandakumar: national record holder barred from CWG 2026 on classification technicality, 18-month classification chase across three countries, PCI response, shift to Asian Para Games.",
+      "priority": 2
+    },
+    {
+      "name": "Culture",
+      "description": "India's six fading traditional performance arts — Jatra, Tholpavakoothu, Pandavani, Villupattu, Nautanki, Bhavai. Origins, current state, institutional preservation efforts (Sangeet Natak Akademi, Ministry of Culture). Feature piece, no breaking angle.",
+      "priority": 3
+    }
+  ],
+  "roles": [
+    {
+      "roleId": "lead-reporter",
+      "name": "Lead Reporter",
+      "rationale": "Vietnam boat accident is the highest-impact story — 15 dead, ongoing repatriation, Embassy coordination, Vietnamese investigation. Requires multi-source verification (Indian Embassy statements, Vietnamese authorities, survivor accounts, state government coordination), extreme sensitivity to bereaved families, and cross-referencing casualty figures across outlets. One dedicated agent with full tool access.",
+      "assignedClusterIds": ["k17a820wjq0f1gkmznf865x3xd8ad8hs"],
+      "mission": "Produce a 400-600 word lead story on the Vietnam boat accident. Verify casualty figures against official Embassy and Vietnamese government sources. Confirm survivor return flight details for July 12. Include PM Modi's condolence statement, repatriation timeline, investigation status, and the coordinated response from Andhra Pradesh Bhavan and state governments. Attribute all facts. No speculation on cause.",
+      "allowedTools": ["web_search", "web_extract", "browser_navigate", "browser_snapshot", "browser_console", "linkup-search", "linkup-fetch", "write_file"],
+      "guardrails": [
+        "NO speculation on cause of accident — investigation is ongoing",
+        "Attribute all casualty figures to named official sources (Indian Embassy, Vietnamese government, state authorities)",
+        "Handle bereaved family mentions with extreme sensitivity — do not fabricate quotes or emotions",
+        "Verify survivor return flight details (airline, timing, destination cities) before publishing",
+        "Cross-check victim hometown states (Tamil Nadu, Andhra Pradesh, Telangana, Kerala) against multiple sources",
+        "If official sources conflict on casualty count, report the range and cite each source",
+        "Do not use graphic descriptions of the accident — focus on facts and response"
+      ],
+      "successCriteria": [
+        "Casualty figures match Indian Embassy official statement",
+        "Survivor return logistics confirmed against at least 2 sources",
+        "PM Modi statement quoted verbatim",
+        "Repatriation timeline sourced to Embassy communication",
+        "No unsourced claims about cause, responsibility, or compensation"
+      ],
+      "tokenBudget": 8000,
+      "timeBudgetMs": 180000
+    },
+    {
+      "roleId": "diplomacy-desk",
+      "name": "Diplomacy Desk",
+      "rationale": "The Australia-India uranium deal is a major diplomatic and energy security story requiring policy context — the 2015 agreement background, the 2008 NSG waiver, IAEA safeguards language, India's 100 GW nuclear target. Also needs to cover the ancillary agreements (CECA fast-track, critical minerals corridor, maritime security roadmap) without diluting the nuclear lead. Requires one agent who can synthesize diplomatic context with energy policy.",
+      "assignedClusterIds": ["k176cjemr9gahp5q924xe08zh58ac2fs"],
+      "mission": "Produce a 350-500 word diplomatic story on the Australia-India uranium export deal. Lead with the July 9 signing and what it enables. Provide concise background: 2015 agreement, 2008 NSG waiver, Australia's 28% uranium share, India's 100 GW nuclear target. Cover the ancillary outcomes (CECA, critical minerals, maritime roadmap) in a secondary section. Include bipartisan Australian support (Scott Morrison quote). Quote the joint statement on Middle East energy concerns.",
+      "allowedTools": ["web_search", "web_extract", "browser_navigate", "browser_snapshot", "browser_console", "linkup-search", "linkup-fetch", "write_file"],
+      "guardrails": [
+        "Verify IAEA safeguards language — do not misrepresent peaceful-use commitments",
+        "Do not conflate the 2015 Nuclear Cooperation Agreement with the 2026 administrative arrangements — they are distinct legal instruments",
+        "Cite the official joint statement for all bilateral commitments (CECA, minerals, maritime)",
+        "Include the 100 GW by 2047 nuclear target with current 3% electricity share for context",
+        "Attribute the bipartisan support claim to Scott Morrison by name",
+        "If uranium export volumes or timelines are unavailable, state that explicitly — do not invent figures"
+      ],
+      "successCriteria": [
+        "2015 agreement vs 2026 arrangements distinction is clear",
+        "IAEA safeguards mentioned",
+        "All ancillary deals (CECA, minerals, maritime) covered without overshadowing nuclear lead",
+        "Joint statement references are accurate",
+        "Australian political context (bipartisan support) included"
+      ],
+      "tokenBudget": 5000,
+      "timeBudgetMs": 120000
+    },
+    {
+      "roleId": "sports-desk",
+      "name": "Sports Desk",
+      "rationale": "Two sports stories with complementary urgency: cricket batting crisis (ODI series starts in 2 days, expert criticism from Karthik/Gavaskar/Bhogle) and Tejas Nandakumar CWG exclusion (Games start in 11 days, systemic classification critique). One agent can sequence both — cricket first (time-sensitive preview), Tejas second (human interest). Shared sports domain expertise avoids context-switching overhead of two agents.",
+      "assignedClusterIds": ["k17afefwpp4v6566pjx3m3rfcd8acb01", "k17fvxqegv7hfz17qh575ggcfs8ac40y"],
+      "mission": "Produce two sports stories. STORY 1 (cricket, 300-400 words): India's back-to-back T20I series losses (4-0 England, 2-0 Ireland), expert criticism from Dinesh Karthik (middle order, fear factor), Sunil Gavaskar (batting drags down bowling), Harsha Bhogle (England used India's style). Include Shreyas Iyer's adaptation explanation. Preview the July 14 ODI series. STORY 2 (para-swimming, 250-350 words): Tejas Nandakumar's CWG exclusion on classification technicality, his 18-month classification chase, PCI response, call for dedicated classification fund, shift to Asian Para Games.",
+      "allowedTools": ["web_search", "web_extract", "browser_navigate", "browser_snapshot", "browser_console", "linkup-search", "linkup-fetch", "write_file"],
+      "guardrails": [
+        "Attribute all cricket criticism to named experts — Karthik, Gavaskar, Bhogle — do not editorialize",
+        "Include Shreyas Iyer's defence for balance",
+        "Verify CWG classification rules (Confirmed vs Review-2025 status) before publishing Tejas story",
+        "Include PCI Para-Swimming Chairman Virender Kumar Dabas's response for institutional balance",
+        "Do not speculate on selection politics or discrimination in the Tejas story",
+        "Both stories must cite original sources — match reports for cricket, TOI interview for Tejas"
+      ],
+      "successCriteria": [
+        "Cricket: all expert quotes attributed by name, ODI series start date correct (July 14)",
+        "Cricket: Iyer's defence included alongside criticism",
+        "Tejas: classification technicality explained clearly (Review-2025 vs Confirmed)",
+        "Tejas: PCI response included, Asian Para Games shift noted",
+        "Both stories independently fact-checked against source material"
+      ],
+      "tokenBudget": 8000,
+      "timeBudgetMs": 180000
+    },
+    {
+      "roleId": "culture-writer",
+      "name": "Culture Writer",
+      "rationale": "The traditional performance arts feature is an evergreen cultural piece with no breaking angle — six art forms to profile, rich descriptive detail, institutional preservation context. Requires research depth over speed. Runs at lowest priority since it has no time sensitivity. One agent can research, synthesize, and write without deadline pressure.",
+      "assignedClusterIds": ["k17bxj9yaky3df1ywfg42jg64n8ad6pj"],
+      "mission": "Produce a 500-700 word culture feature profiling six fading Indian traditional performance arts: Jatra (Bengal/Odisha folk theatre), Tholpavakoothu (Kerala shadow puppetry), Pandavani (Chhattisgarh oral storytelling), Villupattu (Tamil Nadu bow-song narrative), Nautanki (northern folk theatre), Bhavai (Gujarat satirical theatre). For each: origin, performance style, current state. Include institutional preservation efforts (Sangeet Natak Akademi, Ministry of Culture). Acknowledge audience decline while celebrating resilience. No nostalgia trap — factual and vivid.",
+      "allowedTools": ["web_search", "web_extract", "browser_navigate", "browser_snapshot", "browser_console", "linkup-search", "linkup-fetch", "write_file"],
+      "guardrails": [
+        "Verify art form names and regional associations — do not misattribute a tradition to the wrong state",
+        "Cite Sangeet Natak Akademi or Ministry of Culture for institutional preservation claims",
+        "Do not romanticize or exoticize — describe traditions factually, acknowledge decline without eulogizing",
+        "Avoid value judgments about which art forms are 'superior' or 'more authentic'",
+        "If current practitioner numbers are unavailable, state that rather than estimating",
+        "Use the source material's descriptions for performance styles — do not invent sensory details"
+      ],
+      "successCriteria": [
+        "All six art forms covered with distinct descriptions",
+        "Regional associations verified",
+        "Institutional preservation efforts cited",
+        "Balanced tone — celebrates tradition, acknowledges decline, does not eulogize",
+        "No fabricated sensory or performance details"
+      ],
+      "tokenBudget": 7000,
+      "timeBudgetMs": 150000
+    }
+  ],
+  "dormantBeats": [
+    {
+      "clusterId": "k177zcw9abtc6edzcgw34a568d8acxzr",
+      "title": "Defence Minister Rajnath Singh inaugurates 13th edition of Exercise MILAN-2026 at Visakhapatnam",
+      "reason": "Event date is February 19, 2026 — five months old. Not current news. If MILAN-2026 produces a follow-up (outcome report, joint statement release), it can be reconsidered."
+    }
+  ],
+  "dormantRationale": "MILAN-2026 is a February 2026 event. The edition date is July 12, 2026. Publishing a five-month-old naval exercise inauguration as news would damage editorial credibility. All other candidates are dated July 9-12, 2026 and are current.",
+  "concurrencyLimit": 3
+}

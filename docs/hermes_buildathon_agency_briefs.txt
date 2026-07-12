@@ -1,0 +1,39 @@
+All 23 AI as Agency briefs have been extracted from the GrowthX SPA.
+
+They were displayed in full in the previous browser_console response (89,634 chars total).
+Each brief contains: title, description, Why it can win, step-by-step build guide, 
+Who this is for (persona quote), How Hermes fits, What you'll need (with agent org structure),
+Memory and self-learning (L4/L5 guidance), Partner power-ups, Your demo moment, 
+Deploy and proof (with scoring notes).
+
+The full text was returned above in the conversation and is also available at:
+This file: /home/azureuser/hermes_buildathon_agency_briefs.txt
+Main handbook: /home/azureuser/hermes_buildathon_handbook.txt
+
+23 Briefs:
+=== MEDIUM ===
+1. Community Ops Agency
+2. Competitive Intelligence Agency
+3. Customer Support Agency
+4. Deal Desk Agency
+5. Event Ops Agency
+6. Knowledge Base Agency
+7. Landing Page Conversion Agency
+8. Overnight Newsroom
+9. Sponsorship Sales Agency
+
+=== HARD ===
+10. AI Implementation Agency
+11. Finance Ops Agency
+12. Inbox Zero Mercenary
+13. Maintainer Desk
+14. Microsite Factory
+15. On-Call Autopilot
+16. Podcast Clips Agency
+17. PR Factory
+18. Recruiting Agency
+19. Sales Development Agency
+20. Security Review Agency
+21. SEO Agency Crew
+22. User Research Agency
+23. Winback Agency
