@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Google News - Top Stories</title>
+    <link>https://news.google.com</link>
+    <description>Google News</description>
+    <item>
+      <title>PM Modi addresses nation on economic reforms - The Hindu</title>
+      <link>https://news.google.com/articles/CBMi12345</link>
+      <guid>https://news.google.com/articles/CBMi12345</guid>
+      <pubDate>Sat, 12 Jul 2026 06:00:00 GMT</pubDate>
+      <description>
+        &lt;a href=&quot;https://news.google.com/articles/1&quot;&gt;PM Modi addresses nation on economic reforms&lt;/a&gt;&amp;nbsp;&lt;font&gt;The Hindu&lt;/font&gt;
+        &lt;a href=&quot;https://news.google.com/articles/2&quot;&gt;PM Modi outlines economic vision for next decade&lt;/a&gt;&amp;nbsp;&lt;font&gt;Times of India&lt;/font&gt;
+        &lt;a href=&quot;https://news.google.com/articles/3&quot;&gt;Modi announces new economic policy package&lt;/a&gt;&amp;nbsp;&lt;font&gt;NDTV&lt;/font&gt;
+      </description>
+    </item>
+    <item>
+      <title>India vs Australia Test match day 3 highlights - ESPN Cricinfo</title>
+      <link>https://news.google.com/articles/CBMi67890</link>
+      <guid>https://news.google.com/articles/CBMi67890</guid>
+      <pubDate>Sat, 12 Jul 2026 05:30:00 GMT</pubDate>
+      <description>
+        &lt;a href=&quot;https://news.google.com/articles/4&quot;&gt;India takes commanding lead on day 3&lt;/a&gt;&amp;nbsp;&lt;font&gt;ESPN Cricinfo&lt;/font&gt;
+        &lt;a href=&quot;https://news.google.com/articles/5&quot;&gt;Australia fights back but India stays ahead&lt;/a&gt;&amp;nbsp;&lt;font&gt;Cricbuzz&lt;/font&gt;
+        &lt;a href=&quot;https://news.google.com/articles/6&quot;&gt;Bumrah's five-for puts India in control&lt;/a&gt;&amp;nbsp;&lt;font&gt;Sportskeeda&lt;/font&gt;
+      </description>
+    </item>
+    <item>
+      <title>Breaking: Major earthquake hits Nepal, tremors felt in Delhi</title>
+      <link>https://news.google.com/articles/CBMi11111</link>
+      <guid>https://news.google.com/articles/CBMi11111</guid>
+      <pubDate>Sat, 12 Jul 2026 07:15:00 GMT</pubDate>
+      <description>
+        &lt;a href=&quot;https://news.google.com/articles/7&quot;&gt;Major earthquake hits Nepal, tremors felt across North India&lt;/a&gt;&amp;nbsp;&lt;font&gt;BBC News&lt;/font&gt;
+        &lt;a href=&quot;https://news.google.com/articles/8&quot;&gt;7.2 magnitude quake strikes Nepal capital&lt;/a&gt;&amp;nbsp;&lt;font&gt;Al Jazeera&lt;/font&gt;
+        &lt;a href=&quot;https://news.google.com/articles/9&quot;&gt;Earthquake damage reported in Kathmandu&lt;/a&gt;&amp;nbsp;&lt;font&gt;Reuters&lt;/font&gt;
+      </description>
+    </item>
+  </channel>
+</rss>

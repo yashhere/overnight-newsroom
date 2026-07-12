@@ -1,0 +1,17 @@
+[Unit]
+Description=Overnight Newsroom Hermes enricher
+After=network-online.target
+
+[Service]
+Type=simple
+User=azureuser
+WorkingDirectory=/home/azureuser/overnight-newsroom/services/ingestion
+EnvironmentFile=/etc/newsroom.env
+ExecStart=/usr/bin/node dist/enricher.js
+Restart=always
+RestartSec=5
+StartLimitBurst=10
+StartLimitIntervalSec=120
+
+[Install]
+WantedBy=multi-user.target

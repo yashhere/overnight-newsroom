@@ -8,6 +8,7 @@ priority: P0
 phase: event-day
 blocked_by:
   - ONR-002
+  - ONR-016
 blocks:
   - ONR-005
   - ONR-011
@@ -16,7 +17,7 @@ labels:
   - hermes
   - dynamic-agents
   - agent-organisation
-prd: ../PRD.md
+prd: ../overnight-newsroom-prd-v2.md
 ---
 
 # 004 — Make Hermes derive and run a dynamic newsroom organisation

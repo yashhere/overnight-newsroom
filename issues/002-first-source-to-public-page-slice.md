@@ -9,14 +9,13 @@ phase: event-day
 blocked_by:
   - ONR-001
 blocks:
-  - ONR-003
   - ONR-004
 labels:
   - ready-for-agent
   - tracer-bullet
   - cloudflare
   - convex
-prd: ../PRD.md
+prd: ../overnight-newsroom-prd-v2.md
 ---
 
 # 002 — Ship the first source-to-public-page tracer bullet

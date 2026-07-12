@@ -8,6 +8,7 @@ priority: P0
 phase: event-day
 blocked_by:
   - ONR-004
+  - ONR-016
 blocks:
   - ONR-012
   - ONR-014
@@ -18,7 +19,7 @@ labels:
   - convex
   - mission-control
   - evidence
-prd: ../PRD.md
+prd: ../overnight-newsroom-prd-v2.md
 ---
 
 # 011 - Build the live Newsroom Mission Control and trace view

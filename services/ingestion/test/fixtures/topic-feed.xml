@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Google News - Business</title>
+    <link>https://news.google.com</link>
+    <description>Google News</description>
+    <item>
+      <title>RBI keeps repo rate unchanged at 6.5%</title>
+      <link>https://news.google.com/articles/CBMi22222</link>
+      <guid>https://news.google.com/articles/CBMi22222</guid>
+      <pubDate>Sat, 12 Jul 2026 05:45:00 GMT</pubDate>
+      <description>RBI holds rates steady for fourth consecutive meeting</description>
+    </item>
+    <item>
+      <title>Sensex hits all-time high as IT stocks rally</title>
+      <link>https://news.google.com/articles/CBMi33333</link>
+      <guid>https://news.google.com/articles/CBMi33333</guid>
+      <pubDate>Sat, 12 Jul 2026 04:00:00 GMT</pubDate>
+      <description>Indian markets surge on positive global cues</description>
+    </item>
+    <item>
+      <title>Budget 2026 expectations: What industry wants</title>
+      <link>https://news.google.com/articles/CBMi44444</link>
+      <description>Industry leaders share their wishlist ahead of the Union Budget</description>
+    </item>
+  </channel>
+</rss>
