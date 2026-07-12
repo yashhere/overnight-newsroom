@@ -25,6 +25,7 @@ import {
   MessageSquare,
   Newspaper,
   Pencil,
+  PieChart,
   Radio,
   Search,
   Shield,
@@ -971,6 +972,41 @@ export function MissionControlPage() {
 
   const data = useMissionControl(effectiveEditionKey);
 
+  // Filter state
+  const [kanbanStatusFilter, setKanbanStatusFilter] = useState<string>("all");
+  const [kanbanRoleFilter, setKanbanRoleFilter] = useState<string>("all");
+  const [eventTypeFilter, setEventTypeFilter] = useState<string>("all");
+  const [eventSearch, setEventSearch] = useState<string>("");
+
+  // Filtered kanban
+  const filteredStoryBoard = useMemo(() => {
+    if (!data) return {};
+    const result: Record<string, MissionControlStory[]> = {};
+    for (const [stage, stories] of Object.entries(data.storyBoard)) {
+      result[stage] = stories.filter((s) => {
+        if (kanbanRoleFilter !== "all" && s.roleId !== kanbanRoleFilter)
+          return false;
+        return true;
+      });
+    }
+    return result;
+  }, [data, kanbanRoleFilter]);
+
+  // Filtered events
+  const filteredEvents = useMemo(() => {
+    if (!data) return [];
+    return data.events.filter((e) => {
+      if (eventTypeFilter === "errors" && e.severity !== "error") return false;
+      if (eventTypeFilter === "warnings" && e.severity !== "warning" && e.severity !== "error") return false;
+      if (eventTypeFilter === "handoffs" && e.type !== "handoff" && e.type !== "revision_accepted" && e.type !== "draft_rejected") return false;
+      if (eventSearch) {
+        const q = eventSearch.toLowerCase();
+        if (!e.message.toLowerCase().includes(q) && !(e.roleName && e.roleName.toLowerCase().includes(q))) return false;
+      }
+      return true;
+    });
+  }, [data, eventTypeFilter, eventSearch]);
+
   // Detail drawer state
   const [drawerRoleId, setDrawerRoleId] = useState<string | null>(null);
   const [drawerStory, setDrawerStory] = useState<MissionControlStory | null>(
@@ -1075,6 +1111,26 @@ export function MissionControlPage() {
         onSelectEdition={setSelectedEditionKey}
       />
 
+      {/* Cost breakdown bar */}
+      {data.agents.length > 0 && (
+        <div className="flex items-center gap-2 border-b bg-muted/30 px-4 py-1.5 text-[10px]">
+          <PieChart className="h-3 w-3 text-muted-foreground" />
+          <span className="font-medium text-muted-foreground">Per-role cost:</span>
+          {data.agents
+            .filter((a) => (a.totalCostCents ?? 0) > 0)
+            .sort((a, b) => (b.totalCostCents ?? 0) - (a.totalCostCents ?? 0))
+            .slice(0, 6)
+            .map((a) => (
+              <span key={a.roleId} className="flex items-center gap-1">
+                <span className="max-w-[80px] truncate">{a.roleName}</span>
+                <span className="font-mono text-muted-foreground">
+                  {formatCents(a.totalCostCents)}
+                </span>
+              </span>
+            ))}
+        </div>
+      )}
+
       {/* Three-pane layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left Pane — Agent List */}
@@ -1088,16 +1144,96 @@ export function MissionControlPage() {
 
         {/* Center Pane — Story Kanban Board */}
         <div className="flex-1 overflow-hidden bg-muted/20">
+          {/* Kanban filters */}
+          <div className="flex items-center gap-2 border-b bg-white px-3 py-1.5">
+            <span className="text-[10px] font-medium uppercase text-muted-foreground">
+              Filter:
+            </span>
+            <div className="flex gap-1">
+              {[
+                { key: "all", label: "All" },
+                { key: "planned", label: "Planned" },
+                { key: "reporting", label: "Reporting" },
+                { key: "drafting", label: "Drafting" },
+                { key: "fact_check", label: "Fact Check" },
+              ].map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => setKanbanStatusFilter(f.key)}
+                  className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                    kanbanStatusFilter === f.key
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex-1" />
+            <select
+              value={kanbanRoleFilter}
+              onChange={(e) => setKanbanRoleFilter(e.target.value)}
+              className="rounded border bg-white px-1.5 py-0.5 text-[10px]"
+            >
+              <option value="all">All roles</option>
+              {data.agents
+                .filter((a) => !a.isEditorInChief)
+                .map((a) => (
+                  <option key={a.roleId} value={a.roleId}>
+                    {a.roleName}
+                  </option>
+                ))}
+            </select>
+          </div>
           <StoryBoard
-            storyBoard={data.storyBoard}
+            storyBoard={filteredStoryBoard}
             onSelectStory={handleSelectStory}
           />
         </div>
 
         {/* Right Pane — Activity Feed */}
         <div className="w-80 flex-shrink-0 border-l bg-white">
+          {/* Event filters */}
+          <div className="border-b px-2 py-1.5">
+            <div className="mb-1.5 flex gap-1">
+              {[
+                { key: "all", label: "All" },
+                { key: "errors", label: "Errors" },
+                { key: "warnings", label: "Alerts" },
+                { key: "handoffs", label: "Handoffs" },
+              ].map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => setEventTypeFilter(f.key)}
+                  className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                    eventTypeFilter === f.key
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1 rounded border bg-muted/30 px-2 py-1">
+              <Search className="h-3 w-3 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search events..."
+                value={eventSearch}
+                onChange={(e) => setEventSearch(e.target.value)}
+                className="flex-1 bg-transparent text-[10px] outline-none placeholder:text-muted-foreground/50"
+              />
+              {eventSearch && (
+                <button onClick={() => setEventSearch("")} className="text-muted-foreground hover:text-foreground">
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          </div>
           <ActivityFeed
-            events={data.events}
+            events={filteredEvents}
             onSelectEvent={handleSelectEvent}
           />
         </div>
