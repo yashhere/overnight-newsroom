@@ -14,7 +14,7 @@ export function estimateTokens(text: string): number {
 }
 
 /**
- * Compute cost in integer cents from token counts and per-million-token rates.
+ * Compute estimated cost in cents from token counts and per-million-token rates.
  */
 export function computeCostCents(
   inputTokens: number,
@@ -22,19 +22,23 @@ export function computeCostCents(
   inputRatePerM?: number,
   outputRatePerM?: number
 ): number {
-  const inRate =
-    inputRatePerM ??
-    Number(process.env.HERMES_INPUT_USD_PER_1M_TOKENS || "0");
-  const outRate =
-    outputRatePerM ??
-    Number(process.env.HERMES_OUTPUT_USD_PER_1M_TOKENS || "0");
+  const provider = process.env.LLM_PROVIDER || "openai";
+  const inputEnv = provider === "openai"
+    ? process.env.OPENAI_INPUT_USD_PER_1M_TOKENS
+    : process.env.HERMES_INPUT_USD_PER_1M_TOKENS;
+  const outputEnv = provider === "openai"
+    ? process.env.OPENAI_OUTPUT_USD_PER_1M_TOKENS
+    : process.env.HERMES_OUTPUT_USD_PER_1M_TOKENS;
+
+  const inRate = inputRatePerM ?? Number(inputEnv || "0");
+  const outRate = outputRatePerM ?? Number(outputEnv || "0");
 
   const costUsd =
     (inputTokens / 1_000_000) * inRate +
     (outputTokens / 1_000_000) * outRate;
 
-  // Integer cents (Math.round for sub-cent accumulation)
-  return Math.round(costUsd * 100);
+  // Fractional cents for observability. Small LLM calls often cost <1 cent.
+  return Math.round(costUsd * 100 * 10_000) / 10_000;
 }
 
 /**

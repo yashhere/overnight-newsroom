@@ -257,7 +257,15 @@ export async function defaultHermesSession(
 export async function planEdition(
   input: RoleDerivationInput,
   hermes: HermesSession = defaultHermesSession
-): Promise<{ plan: EditorialPlan; costCents: number; latencyMs: number }> {
+): Promise<{
+  plan: EditorialPlan;
+  costCents: number;
+  latencyMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  usageSource: "provider" | "estimated" | "none";
+}> {
   const userMessage = buildRoleDerivationMessage(input);
 
   const result = await hermes({
@@ -301,7 +309,15 @@ export async function planEdition(
     result.rawContent
   );
 
-  return { plan, costCents: cost.estimatedCostCents, latencyMs: result.latencyMs };
+  return {
+    plan,
+    costCents: cost.estimatedCostCents,
+    latencyMs: result.latencyMs,
+    inputTokens: cost.inputTokens,
+    outputTokens: cost.outputTokens,
+    totalTokens: cost.totalTokens,
+    usageSource: cost.usageSource,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -468,6 +484,12 @@ export async function reviewWorkerOutput(
   decision: "accept" | "reject";
   revisionNote?: RevisionNote;
   commentary: string;
+  tokensUsed: number;
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCostCents: number;
+  latencyMs: number;
+  usageSource: "provider" | "estimated" | "none";
 }> {
   const userMessage = buildManagerReviewMessage(role, workerResult, workerResult.rawResponse);
 
@@ -478,6 +500,20 @@ export async function reviewWorkerOutput(
     maxTokens: 300,
     jsonMode: true,
   });
+
+  const cost = buildCostEstimate(
+    result.usage,
+    `${MANAGER_REVIEW_PROMPT}\n\n${userMessage}`,
+    result.rawContent
+  );
+  const observability = {
+    tokensUsed: cost.totalTokens,
+    inputTokens: cost.inputTokens,
+    outputTokens: cost.outputTokens,
+    estimatedCostCents: cost.estimatedCostCents,
+    latencyMs: result.latencyMs,
+    usageSource: cost.usageSource,
+  };
 
   try {
     const json = JSON.parse(result.rawContent);
@@ -492,15 +528,17 @@ export async function reviewWorkerOutput(
           severity: note.severity,
         },
         commentary: json.commentary || "",
+        ...observability,
       };
     }
     return {
       decision: "accept",
       commentary: json.commentary || "Accepted.",
+      ...observability,
     };
   } catch {
     // If parsing fails, default to accept (don't block on review parse errors)
-    return { decision: "accept", commentary: "Review parse failed — auto-accepted." };
+    return { decision: "accept", commentary: "Review parse failed — auto-accepted.", ...observability };
   }
 }
 

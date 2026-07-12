@@ -37,6 +37,16 @@ function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+function formatCents(cents: number): string {
+  if (!Number.isFinite(cents)) return "n/a";
+  return `${cents.toFixed(cents < 1 ? 4 : 2)}c`;
+}
+
+function formatMs(ms: number): string {
+  if (!Number.isFinite(ms)) return "n/a";
+  return `${ms}ms`;
+}
+
 async function main() {
   console.log("══════════════════════════════════════════════");
   console.log("  E2E: Random Article → Full Pipeline");
@@ -113,7 +123,8 @@ async function main() {
   }
 
   const { plan, costCents: planCost, latencyMs: planLatency } = planResult;
-  console.log(`  ✓ Plan derived in ${planLatency}ms (${planCost}c)`);
+  console.log(`  ✓ Plan derived in ${formatMs(planLatency)} (${formatCents(planCost)})`);
+  console.log(`  Usage: input=${planResult.inputTokens}, output=${planResult.outputTokens}, total=${planResult.totalTokens}, source=${planResult.usageSource}`);
   console.log(`  Direction: "${plan.editorialDirection.slice(0, 100)}..."`);
   console.log(`  Sections:  [${plan.sections.map((s: any) => s.name).join(", ")}]`);
   console.log(`  Roles:     ${plan.roles.length}`);
@@ -178,7 +189,8 @@ async function main() {
     console.log(`    • ${s.name} — ${s.url.slice(0, 60)}... (accessed: ${s.accessed})`);
   }
   console.log(`  Self-assessment: ${workerResult.selfAssessment.meetsCriteria ? "✓ meets" : "✗ fails"} — "${workerResult.selfAssessment.reasoning.slice(0, 120)}..."`);
-  console.log(`  Tokens: ${workerResult.tokensUsed} | Cost: ${workerResult.estimatedCostCents}c`);
+  console.log(`  Usage: input/output not persisted on WorkerResult, total=${workerResult.tokensUsed}, source=provider-or-estimated`);
+  console.log(`  Cost: ${formatCents(workerResult.estimatedCostCents)} | Latency: ${formatMs(workerResult.latencyMs)}`);
   if (workerResult.validationErrors.length > 0) {
     console.log(`  ⚠ Validation errors: ${workerResult.validationErrors.join("; ")}`);
   }
@@ -196,6 +208,8 @@ async function main() {
 
   console.log(`  Decision:   ${review.decision.toUpperCase()}`);
   console.log(`  Commentary: "${review.commentary}"`);
+  console.log(`  Usage:      input=${review.inputTokens}, output=${review.outputTokens}, total=${review.tokensUsed}, source=${review.usageSource}`);
+  console.log(`  Cost:       ${formatCents(review.estimatedCostCents)} | Latency: ${formatMs(review.latencyMs)}`);
   if (review.decision === "reject" && review.revisionNote) {
     console.log(`  Concerns:   [${review.revisionNote.concerns.join("; ")}]`);
     console.log(`  Suggestions:[${review.revisionNote.suggestions.join("; ")}]`);
@@ -221,9 +235,10 @@ async function main() {
     editionAudio = audioResult.editionAudio;
     console.log(`  ✓ ${audioResult.segments.length} segments generated`);
     console.log(`  Full audio: ${editionAudio.fullAudioUrl}`);
-    console.log(`  Duration:   ${editionAudio.totalDurationMs}ms`);
+    console.log(`  Duration:   ${formatMs(editionAudio.totalDurationMs)}`);
     console.log(`  Chapters:   ${editionAudio.chapters.length}`);
-    console.log(`  Cost:       ${editionAudio.totalCostCents}c`);
+    console.log(`  Cost:       ${formatCents(editionAudio.totalCostCents)}`);
+    console.log(`  Latency:    ${formatMs(editionAudio.totalLatencyMs)}`);
 
     // Persist segments to Convex
     for (const seg of audioResult.segments) {
@@ -318,9 +333,17 @@ async function main() {
         validationStatus: workerResult.validationStatus,
         reviewDecision: review.decision,
         storyConfidence: workerResult.story.confidence,
+        planTokens: planResult.totalTokens,
+        planCostCents: planCost,
         workerTokens: workerResult.tokensUsed,
+        workerCostCents: workerResult.estimatedCostCents,
+        reviewTokens: review.tokensUsed,
+        reviewCostCents: review.estimatedCostCents,
+        audioCostCents: editionAudio?.totalCostCents ?? 0,
         planLatencyMs: planLatency,
         workerLatencyMs: workerResult.latencyMs,
+        reviewLatencyMs: review.latencyMs,
+        audioLatencyMs: editionAudio?.totalLatencyMs ?? 0,
         bulletsProduced: workerResult.story.summaryBullets.length,
         sourcesFound: workerResult.story.sources.length,
       }),
@@ -366,8 +389,22 @@ async function main() {
   }
 
   // ── SUMMARY ─────────────────────────────────────────────────────
-  const totalCost = planCost + workerResult.estimatedCostCents;
-  const totalLatency = planLatency + workerResult.latencyMs;
+  const llmCost = planCost + workerResult.estimatedCostCents + review.estimatedCostCents;
+  const audioCost = editionAudio?.totalCostCents ?? 0;
+  const totalCost = llmCost + audioCost;
+  const llmLatency = planLatency + workerResult.latencyMs + review.latencyMs;
+  const audioLatency = editionAudio?.totalLatencyMs ?? 0;
+  const totalLatency = llmLatency + audioLatency;
+
+  console.log("\n══════════════════════════════════════════════");
+  console.log("  OBSERVABILITY");
+  console.log("══════════════════════════════════════════════");
+  console.log(`  Model/provider: ${process.env.LLM_PROVIDER || "openai"}/${process.env.LLM_MODEL || "gpt-5.5"}`);
+  console.log(`  Plan:           tokens=${planResult.totalTokens} (in=${planResult.inputTokens}, out=${planResult.outputTokens}, ${planResult.usageSource}) | cost=${formatCents(planCost)} | latency=${formatMs(planLatency)}`);
+  console.log(`  Worker:         tokens=${workerResult.tokensUsed} | cost=${formatCents(workerResult.estimatedCostCents)} | latency=${formatMs(workerResult.latencyMs)}`);
+  console.log(`  Review:         tokens=${review.tokensUsed} (in=${review.inputTokens}, out=${review.outputTokens}, ${review.usageSource}) | cost=${formatCents(review.estimatedCostCents)} | latency=${formatMs(review.latencyMs)}`);
+  console.log(`  Audio:          segments=${editionAudio?.segments?.length ?? 0} | cost=${formatCents(audioCost)} | generation latency=${formatMs(audioLatency)} | duration=${formatMs(editionAudio?.totalDurationMs ?? 0)}`);
+  console.log(`  Totals:         LLM=${formatCents(llmCost)}, audio=${formatCents(audioCost)}, all=${formatCents(totalCost)} | latency=${formatMs(totalLatency)}`);
 
   console.log("\n══════════════════════════════════════════════");
   console.log("  PIPELINE COMPLETE");
@@ -378,8 +415,8 @@ async function main() {
   console.log(`  Role:           ${role.name} (${role.roleId})`);
   console.log(`  Story:          "${workerResult.story.title.slice(0, 80)}..."`);
   console.log(`  Review:         ${review.decision.toUpperCase()}`);
-  console.log(`  Total cost:     ${totalCost.toFixed(2)}c`);
-  console.log(`  Total latency:  ${totalLatency}ms`);
+  console.log(`  Total cost:     ${formatCents(totalCost)}`);
+  console.log(`  Total latency:  ${formatMs(totalLatency)}`);
   console.log(`  Published:      ✓`);
   console.log("══════════════════════════════════════════════\n");
 }
