@@ -1,0 +1,42 @@
+# Overnight Newsroom — Public Site (Cloudflare Pages)
+name = "overnight-newsroom"
+
+# Pages configuration
+pages_build_output_dir = "dist"
+
+# ---------------------------------------------------------------------------
+# IMPORTANT: Build-time env vars must be set in the Cloudflare dashboard
+# under Settings → Environment variables → Build.
+# The [vars] section below is RUNTIME only.
+# ---------------------------------------------------------------------------
+#
+# Required build env vars (set in CF dashboard, NOT here):
+#   VITE_CONVEX_URL     — Convex deployment URL (Vite inlines this at build)
+#   CONVEX_DEPLOY_KEY   — Convex deploy key (needed by `convex codegen` during build)
+#
+# ---------------------------------------------------------------------------
+
+[vars]
+# Runtime env vars for Pages Functions only — Vite does NOT see these
+
+# ---------------------------------------------------------------------------
+# When deploying via `wrangler pages deploy` (instead of git integration),
+# pass build env vars on the CLI:
+#   npx wrangler pages deploy dist --branch main \
+#     --build-env VITE_CONVEX_URL=https://xxx.convex.cloud \
+#     --build-env CONVEX_DEPLOY_KEY=dev:xxx|yyy
+# ---------------------------------------------------------------------------
+
+[build]
+command = "npm run web:build"
+
+[dev]
+port = 8788
+
+# ---------------------------------------------------------------------------
+# If you add a Pages Function (e.g. /functions/), uncomment:
+# [[unsafe.bindings]]
+# name = "ASSETS"
+# type = "assets"
+# directory = "./public"
+# ---------------------------------------------------------------------------
