@@ -19,6 +19,7 @@ import {
   assembleEdition,
   diffRoleGraphs,
   type HermesSession,
+  type CapturedEvalCase,
 } from "../ingestion/src/editorial.js";
 import {
   EditorialPlanSchema,
@@ -560,6 +561,38 @@ async function run(): Promise<void> {
       console.log(`  ✗ ${r.caseId}`);
       console.log(`    ${r.detail}`);
     }
+  }
+
+  // ── Persist to Convex ──
+  const convexUrl = process.env.CONVEX_URL;
+  const convexSecret = process.env.INGESTION_API_SECRET;
+  const promptVersion = process.env.HERMES_MODEL || "hermes-agent";
+
+  if (convexUrl && convexSecret) {
+    try {
+      const { ConvexHttpClient } = await import("convex/browser");
+      const client = new ConvexHttpClient(convexUrl);
+      const callMutation = (name: string, args: Record<string, unknown>) =>
+        (client as any).mutation(name, args);
+
+      await callMutation("editorial:recordEvalRun", {
+        secret: convexSecret,
+        runId,
+        evalSet: "editorial",
+        total: run.total,
+        passed: run.passed,
+        failed: run.failed,
+        passRate: run.passRate,
+        byCategoryJson: JSON.stringify(run.byCategory),
+        promptVersion,
+        source: "manual",
+      });
+      console.log(`  ✓ Persisted eval run ${runId} to Convex`);
+    } catch (e: any) {
+      console.log(`  ⚠ Convex persist failed (eval results still valid): ${e.message}`);
+    }
+  } else {
+    console.log(`  ⚠ CONVEX_URL/INGESTION_API_SECRET not set — run not persisted`);
   }
 
   console.log(`\n── Complete ── (${totalDuration}ms)\n`);
