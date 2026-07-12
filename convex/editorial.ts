@@ -486,3 +486,100 @@ export const getPriorEditionDigest = query({
       }));
   },
 });
+
+// ---------------------------------------------------------------------------
+// Eval mutations (auto-capture + eval runs)
+// ---------------------------------------------------------------------------
+
+/** Upsert an eval case — auto-captured from live runs or seeded manually. */
+export const upsertEvalCase = mutation({
+  args: {
+    secret: v.string(),
+    evalId: v.string(),
+    category: v.string(),
+    description: v.string(),
+    inputDigest: v.string(),
+    expectedBehavior: v.string(),
+    promptVersionAtCapture: v.string(),
+    source: v.union(v.literal("seeded"), v.literal("captured")),
+    provenanceEdition: v.optional(v.string()),
+    provenanceRoleId: v.optional(v.string()),
+    notes: v.string(),
+  },
+  handler: async (ctx, args) => {
+    checkSecret(args.secret);
+
+    // Deduplicate by evalId
+    const existing = await ctx.db
+      .query("evalCases")
+      .withIndex("by_category", (q) => q.eq("category", args.category as any))
+      .filter((q) => q.eq(q.field("evalId"), args.evalId))
+      .take(1);
+
+    if (existing.length > 0) return { evalId: args.evalId, status: "duplicate" };
+
+    const now = Date.now();
+    await ctx.db.insert("evalCases", {
+      evalId: args.evalId,
+      category: args.category as any,
+      description: args.description,
+      inputDigest: args.inputDigest,
+      expectedBehavior: args.expectedBehavior,
+      promptVersionAtCapture: args.promptVersionAtCapture,
+      source: args.source,
+      provenanceEdition: args.provenanceEdition,
+      provenanceRoleId: args.provenanceRoleId,
+      notes: args.notes,
+      createdAt: now,
+    });
+
+    return { evalId: args.evalId, status: "created" };
+  },
+});
+
+/** Record an eval run result. */
+export const recordEvalRun = mutation({
+  args: {
+    secret: v.string(),
+    runId: v.string(),
+    evalSet: v.string(),
+    total: v.number(),
+    passed: v.number(),
+    failed: v.number(),
+    passRate: v.number(),
+    byCategoryJson: v.string(),
+    promptVersion: v.string(),
+    source: v.union(v.literal("manual"), v.literal("ci"), v.literal("pre-commit")),
+  },
+  handler: async (ctx, args) => {
+    checkSecret(args.secret);
+
+    const now = Date.now();
+    await ctx.db.insert("evalRuns", {
+      runId: args.runId,
+      evalSet: args.evalSet,
+      total: args.total,
+      passed: args.passed,
+      failed: args.failed,
+      passRate: args.passRate,
+      byCategoryJson: args.byCategoryJson,
+      promptVersion: args.promptVersion,
+      source: args.source,
+      createdAt: now,
+    });
+
+    return { runId: args.runId, status: "created" };
+  },
+});
+
+/** Get the last N eval runs for a given eval set. */
+export const getEvalRuns = query({
+  args: { evalSet: v.string(), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("evalRuns")
+      .withIndex("by_evalSet_createdAt", (q) => q.eq("evalSet", args.evalSet))
+      .order("desc")
+      .take(args.limit ?? 10);
+  },
+});

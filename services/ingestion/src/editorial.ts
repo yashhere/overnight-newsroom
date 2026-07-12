@@ -40,6 +40,21 @@ import type { RoleDerivationInput } from "./manager.js";
 
 const RAW_RESPONSE_MAX_CHARS = 2000;
 
+/** An eval case auto-captured from a live run failure. */
+export interface CapturedEvalCase {
+  evalId: string;
+  category: string;
+  description: string;
+  inputDigest: string;
+  expectedBehavior: string;
+  promptVersionAtCapture: string;
+  source: "captured";
+  provenanceEdition: string;
+  provenanceRoleId?: string;
+  notes: string;
+  createdAt: number;
+}
+
 function capRaw(text: string): string {
   return text.slice(0, RAW_RESPONSE_MAX_CHARS);
 }
@@ -54,6 +69,7 @@ export interface OrchestrationResult {
   workerResults: WorkerResult[];
   revisionLoops: RevisionLoop[];
   memories: NewsroomMemory[];
+  capturedEvalCases: CapturedEvalCase[];
   totalTokensUsed: number;
   totalCostCents: number;
   totalLatencyMs: number;
@@ -447,10 +463,12 @@ export async function runWorkersWithReview(
   results: WorkerResult[];
   loops: RevisionLoop[];
   memories: NewsroomMemory[];
+  capturedEvalCases: CapturedEvalCase[];
 }> {
   const results: WorkerResult[] = [];
   const loops: RevisionLoop[] = [];
   const memories: NewsroomMemory[] = [];
+  const capturedEvalCases: CapturedEvalCase[] = [];
   const concurrency = plan.concurrencyLimit ?? 3;
 
   // Phase 1: Run all workers concurrently (up to concurrency limit)
@@ -494,6 +512,20 @@ export async function runWorkersWithReview(
           tags: ["crash", "resilience"],
           provenance: `edition-${plan.editionKey}`,
           confidence: 0.8,
+          createdAt: Date.now(),
+        });
+        // Auto-capture as eval case
+        capturedEvalCases.push({
+          evalId: randomUUID(),
+          category: "concurrency",
+          description: `Worker crash during edition ${plan.editionKey}`,
+          inputDigest: plan.inputDigest,
+          expectedBehavior: "Workers run without crashing",
+          promptVersionAtCapture: process.env.HERMES_MODEL || "hermes-agent",
+          source: "captured",
+          provenanceEdition: plan.editionKey,
+          provenanceRoleId: undefined,
+          notes: `Crash: ${r.reason?.message || "unknown"}`,
           createdAt: Date.now(),
         });
       }
@@ -591,6 +623,20 @@ export async function runWorkersWithReview(
             confidence: 0.5,
             createdAt: Date.now(),
           });
+          // Auto-capture: revision passed schema but failed manager re-review
+          capturedEvalCases.push({
+            evalId: randomUUID(),
+            category: "revision-loop",
+            description: `Re-review failure for role ${role.roleId} in edition ${plan.editionKey}`,
+            inputDigest: plan.inputDigest,
+            expectedBehavior: "Re-reviewed revision should pass manager inspection",
+            promptVersionAtCapture: process.env.HERMES_MODEL || "hermes-agent",
+            source: "captured",
+            provenanceEdition: plan.editionKey,
+            provenanceRoleId: role.roleId,
+            notes: `Re-review rejected: ${reReview.commentary}. Original concerns: ${review.revisionNote.concerns.join("; ")}`,
+            createdAt: Date.now(),
+          });
         }
       } else {
         loop.disposition = "rejected";
@@ -604,6 +650,20 @@ export async function runWorkersWithReview(
           tags: ["revision", role.roleId, "failure"],
           provenance: `edition-${plan.editionKey}`,
           confidence: 0.6,
+          createdAt: Date.now(),
+        });
+        // Auto-capture: revision produced invalid output
+        capturedEvalCases.push({
+          evalId: randomUUID(),
+          category: "revision-loop",
+          description: `Revision schema failure for role ${role.roleId} in edition ${plan.editionKey}`,
+          inputDigest: plan.inputDigest,
+          expectedBehavior: "Revised worker output should pass schema validation",
+          promptVersionAtCapture: process.env.HERMES_MODEL || "hermes-agent",
+          source: "captured",
+          provenanceEdition: plan.editionKey,
+          provenanceRoleId: role.roleId,
+          notes: `Revision failed schema: ${revValidation.errors.join("; ")}`,
           createdAt: Date.now(),
         });
       }
@@ -623,7 +683,7 @@ export async function runWorkersWithReview(
     }
   }
 
-  return { results, loops, memories };
+  return { results, loops, memories, capturedEvalCases };
 }
 
 // ---------------------------------------------------------------------------
@@ -706,6 +766,7 @@ export async function orchestrateEdition(
       workerResults: [],
       revisionLoops: [],
       memories: [],
+      capturedEvalCases: [],
       totalTokensUsed: 0,
       totalCostCents: 0,
       totalLatencyMs: Date.now() - start,
@@ -715,7 +776,7 @@ export async function orchestrateEdition(
   }
 
   // 2. Run workers, review, and revise
-  const { results, loops, memories } = await runWorkersWithReview(
+  const { results, loops, memories, capturedEvalCases } = await runWorkersWithReview(
     plan,
     input.candidates,
     hermes
@@ -763,6 +824,7 @@ export async function orchestrateEdition(
     workerResults: results,
     revisionLoops: loops,
     memories,
+    capturedEvalCases,
     totalTokensUsed,
     totalCostCents,
     totalLatencyMs: Date.now() - start,
@@ -811,6 +873,8 @@ export interface ConvexClient {
   upsertWorkerResult(args: Record<string, unknown>): Promise<unknown>;
   recordRevision(args: Record<string, unknown>): Promise<unknown>;
   saveMemory(args: Record<string, unknown>): Promise<unknown>;
+  upsertEvalCase(args: Record<string, unknown>): Promise<unknown>;
+  recordEvalRun(args: Record<string, unknown>): Promise<unknown>;
 }
 
 export async function persistOrchestration(
@@ -900,16 +964,19 @@ export async function persistOrchestration(
     });
   }
 
-  // 5. Persist each memory entry
-  for (const mem of memories) {
-    await convex.saveMemory({
-      memoryId: mem.memoryId,
-      kind: mem.kind,
-      content: capRaw(mem.content),
-      tags: mem.tags,
-      provenance: mem.provenance,
-      confidence: mem.confidence,
-      createdAt: mem.createdAt,
+  // 6. Persist each captured eval case (auto-captured from live failures)
+  for (const ec of result.capturedEvalCases) {
+    await convex.upsertEvalCase({
+      evalId: ec.evalId,
+      category: ec.category,
+      description: ec.description,
+      inputDigest: ec.inputDigest,
+      expectedBehavior: ec.expectedBehavior,
+      promptVersionAtCapture: ec.promptVersionAtCapture,
+      source: ec.source,
+      provenanceEdition: ec.provenanceEdition,
+      provenanceRoleId: ec.provenanceRoleId,
+      notes: ec.notes,
     });
   }
 }

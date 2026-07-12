@@ -296,3 +296,42 @@ export async function saveMemory(args: {
     ...args,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Eval mutations (ONR-004/005)
+// ---------------------------------------------------------------------------
+
+export async function upsertEvalCase(args: {
+  evalId: string;
+  category: string;
+  description: string;
+  inputDigest: string;
+  expectedBehavior: string;
+  promptVersionAtCapture: string;
+  source: "seeded" | "captured";
+  provenanceEdition?: string;
+  provenanceRoleId?: string;
+  notes: string;
+}) {
+  return callMutation("editorial:upsertEvalCase", {
+    secret: secret(),
+    ...args,
+  });
+}
+
+export async function recordEvalRun(args: {
+  runId: string;
+  evalSet: string;
+  total: number;
+  passed: number;
+  failed: number;
+  passRate: number;
+  byCategoryJson: string;
+  promptVersion: string;
+  source: "manual" | "ci" | "pre-commit";
+}) {
+  return callMutation("editorial:recordEvalRun", {
+    secret: secret(),
+    ...args,
+  });
+}

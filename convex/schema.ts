@@ -319,4 +319,55 @@ export default defineSchema({
     .index("by_kind_createdAt", ["kind", "createdAt"])
     .index("by_createdAt", ["createdAt"])
     .index("by_provenance", ["provenance"]),
+
+  // ── Evaluation (editorial + judge) ─────────────────────────────
+
+  evalCases: defineTable({
+    evalId: v.string(),
+    category: v.union(
+      v.literal("role-graph"),
+      v.literal("novelty"),
+      v.literal("dormancy"),
+      v.literal("revision-loop"),
+      v.literal("schema-validation"),
+      v.literal("concurrency"),
+      v.literal("budget"),
+      v.literal("edge-case"),
+      v.literal("assembly"),
+      // judge categories (shared table for ONR-005 too)
+      v.literal("unsupported"),
+      v.literal("contradicted"),
+      v.literal("stale"),
+      v.literal("duplicate"),
+      v.literal("supported"),
+      v.literal("conflicting-sources"),
+      v.literal("correction")
+    ),
+    description: v.string(),
+    inputDigest: v.string(),
+    expectedBehavior: v.string(),
+    promptVersionAtCapture: v.string(),
+    source: v.union(v.literal("seeded"), v.literal("captured")),
+    provenanceEdition: v.optional(v.string()),
+    provenanceRoleId: v.optional(v.string()),
+    notes: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_category", ["category"])
+    .index("by_source", ["source"])
+    .index("by_provenanceEdition", ["provenanceEdition"]),
+
+  evalRuns: defineTable({
+    runId: v.string(),
+    evalSet: v.string(),
+    total: v.number(),
+    passed: v.number(),
+    failed: v.number(),
+    passRate: v.number(),
+    byCategoryJson: v.string(),
+    promptVersion: v.string(),
+    source: v.union(v.literal("manual"), v.literal("ci"), v.literal("pre-commit")),
+    createdAt: v.number(),
+  })
+    .index("by_evalSet_createdAt", ["evalSet", "createdAt"]),
 });
