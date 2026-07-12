@@ -26,13 +26,14 @@ import {
   RefreshCw,
   ArrowRight,
   Volume2,
+  Archive,
+  ListChecks,
 } from "lucide-react";
 import {
   useLatestEdition,
   useEditionByKey,
   usePublishedEditions,
   useNewsroomHealth,
-  type EditionPayload,
   type EditionStory,
   type NewsroomHealth,
 } from "@/hooks/useEditions";
@@ -124,6 +125,15 @@ function badgeIcon(badge: string) {
   }
 }
 
+function storyBeat(story: EditionStory): string {
+  return (
+    story.badges?.[0] ||
+    story.sourceName ||
+    story.canonicalPublisherName ||
+    "News Desk"
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Masthead
 // ═══════════════════════════════════════════════════════════════
@@ -136,49 +146,53 @@ function Masthead({
   health: NewsroomHealth | null | undefined;
 }) {
   return (
-    <header className="mb-8 text-center">
-      <h1 className="font-serif text-4xl font-bold tracking-tight md:text-5xl">
+    <header className="mb-6 border-y-4 border-double border-ink py-4 text-center">
+      <div className="mb-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-b border-ink/30 pb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+        <span>Morning Edition</span>
+        <span className="hidden sm:inline">•</span>
+        <span>Autonomous Newspaper</span>
+        <span className="hidden sm:inline">•</span>
+        <span>{publishedAt ? formatDate(publishedAt) : "Preparing next issue"}</span>
+      </div>
+
+      <h1 className="font-serif text-5xl font-black leading-none tracking-[-0.06em] text-ink md:text-7xl lg:text-8xl">
         Overnight Newsroom
       </h1>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Your overnight news briefing — built while you sleep
+      <p className="mx-auto mt-2 max-w-2xl text-sm italic text-muted-foreground md:text-base">
+        A newspaper-style briefing researched, checked, voiced, and published while you sleep.
       </p>
 
-      {/* Status bar */}
-      <div className="mt-3 flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground">
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-[11px] text-muted-foreground">
         {publishedAt && (
-          <span className="flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            Last publish: {formatRelative(publishedAt)}
-          </span>
+          <Badge variant="outline" className="rounded-none border-ink/30 bg-transparent font-mono">
+            <Clock className="mr-1 h-3 w-3" /> Last publish {formatRelative(publishedAt)}
+          </Badge>
         )}
         {health && (
-          <span
-            className={`flex items-center gap-1 ${
+          <Badge
+            variant="outline"
+            className={`rounded-none border-ink/30 bg-transparent font-mono ${
               health.status === "healthy"
-                ? "text-emerald-600"
+                ? "text-emerald-700"
                 : health.status === "degraded"
-                  ? "text-yellow-600"
-                  : "text-red-600"
+                  ? "text-yellow-700"
+                  : "text-red-700"
             }`}
           >
             {health.status === "healthy" ? (
-              <CheckCircle2 className="h-3 w-3" />
+              <CheckCircle2 className="mr-1 h-3 w-3" />
             ) : health.status === "degraded" ? (
-              <AlertTriangle className="h-3 w-3" />
+              <AlertTriangle className="mr-1 h-3 w-3" />
             ) : (
-              <Info className="h-3 w-3" />
+              <Info className="mr-1 h-3 w-3" />
             )}
-            Newsroom: {health.status}
-            {health.recentErrorCount > 0 &&
-              ` (${health.recentErrorCount} errors)`}
-          </span>
+            Newsroom {health.status}
+          </Badge>
         )}
         {health?.audioAvailable && (
-          <span className="flex items-center gap-1 text-emerald-600">
-            <Volume2 className="h-3 w-3" />
-            Audio ready
-          </span>
+          <Badge variant="outline" className="rounded-none border-ink/30 bg-transparent font-mono text-emerald-700">
+            <Volume2 className="mr-1 h-3 w-3" /> Audio edition ready
+          </Badge>
         )}
       </div>
     </header>
@@ -186,13 +200,13 @@ function Masthead({
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Loading Skeleton
+// Loading / Empty State
 // ═══════════════════════════════════════════════════════════════
 
 function LoadingSkeleton() {
   return (
     <div className="space-y-8">
-      <Card>
+      <Card className="rounded-none border-ink/30 bg-transparent shadow-none">
         <CardHeader>
           <Skeleton className="mb-2 h-8 w-64" />
           <Skeleton className="h-4 w-48" />
@@ -209,17 +223,13 @@ function LoadingSkeleton() {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Empty State
-// ═══════════════════════════════════════════════════════════════
-
 function EmptyState() {
   return (
-    <Card className="border-dashed">
+    <Card className="rounded-none border-dashed border-ink/30 bg-transparent shadow-none">
       <CardContent className="flex flex-col items-center gap-4 py-16">
         <Newspaper className="h-12 w-12 text-muted-foreground" />
         <div className="text-center">
-          <p className="text-lg font-medium text-muted-foreground">
+          <p className="font-serif text-2xl font-bold text-muted-foreground">
             No edition published yet
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -234,7 +244,7 @@ function EmptyState() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Story Badges
+// Story Badges / Evidence
 // ═══════════════════════════════════════════════════════════════
 
 function StoryBadges({ badges }: { badges?: string[] | null }) {
@@ -245,7 +255,7 @@ function StoryBadges({ badges }: { badges?: string[] | null }) {
         <Badge
           key={b}
           variant={badgeVariant(b)}
-          className="flex items-center gap-1 text-[10px] capitalize"
+          className="flex items-center gap-1 rounded-none text-[10px] capitalize"
         >
           {badgeIcon(b)}
           {b}
@@ -255,20 +265,16 @@ function StoryBadges({ badges }: { badges?: string[] | null }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Evidence Section (inlined in each story card)
-// ═══════════════════════════════════════════════════════════════
-
 function EvidenceSection({ story }: { story: EditionStory }) {
   const hasClaims = story.claims && story.claims.length > 0;
   const hasVerdicts = story.verdicts && story.verdicts.length > 0;
   if (!hasClaims && !hasVerdicts) return null;
 
   return (
-    <div className="rounded-lg border bg-muted/30 px-3 py-2">
-      <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+    <div className="border border-ink/20 bg-white/40 px-3 py-2">
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
         <Shield className="h-3.5 w-3.5" />
-        Evidence &amp; Fact Check
+        Evidence Ledger
       </div>
 
       {hasClaims && (
@@ -278,20 +284,20 @@ function EvidenceSection({ story }: { story: EditionStory }) {
               (v) => v.claimId === claim.claimId,
             );
             return (
-              <div key={i} className="rounded bg-white px-2 py-1.5 text-xs">
+              <div key={i} className="border-l-2 border-ink/20 bg-white/50 px-2 py-1.5 text-xs">
                 <div className="flex items-start gap-1.5">
-                  <Quote className="mt-0.5 h-3 w-3 flex-shrink-0 text-blue-500" />
+                  <Quote className="mt-0.5 h-3 w-3 flex-shrink-0 text-blue-700" />
                   <div className="min-w-0 flex-1">
                     <p className="font-medium">{claim.claim}</p>
                     {claim.sourceLines.length > 0 && (
-                      <p className="mt-0.5 text-[10px] text-muted-foreground">
+                      <p className="mt-0.5 break-words text-[10px] text-muted-foreground">
                         Sources: {claim.sourceLines.join(" · ")}
                       </p>
                     )}
                   </div>
                 </div>
                 {verdict && (
-                  <div className="ml-4.5 mt-1 flex items-center gap-2 text-[10px]">
+                  <div className="mt-1 flex flex-wrap items-center gap-2 pl-4 text-[10px]">
                     <Badge
                       variant={
                         verdict.verdict === "approved"
@@ -302,14 +308,12 @@ function EvidenceSection({ story }: { story: EditionStory }) {
                               ? "secondary"
                               : "outline"
                       }
-                      className="text-[9px]"
+                      className="rounded-none text-[9px]"
                     >
                       <Gavel className="mr-0.5 h-2.5 w-2.5" />
                       {verdict.verdict}
                     </Badge>
-                    <span className="text-muted-foreground">
-                      {verdict.reason}
-                    </span>
+                    <span className="text-muted-foreground">{verdict.reason}</span>
                     <span className="ml-auto text-muted-foreground">
                       {verdict.confidence}% confidence
                     </span>
@@ -331,9 +335,11 @@ function EvidenceSection({ story }: { story: EditionStory }) {
 function StoryCard({
   story,
   playerRef,
+  variant = "standard",
 }: {
   story: EditionStory;
   playerRef: React.RefObject<AudioPlayerHandle | null>;
+  variant?: "lead" | "standard" | "compact";
 }) {
   const handleListenFromHere = () => {
     if (story.audioSegment && playerRef.current) {
@@ -341,130 +347,147 @@ function StoryCard({
     }
   };
 
+  const isLead = variant === "lead";
+  const isCompact = variant === "compact";
+
   return (
-    <Card id={`story-${story.storyKey}`}>
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <CardTitle className="font-serif text-xl leading-snug md:text-2xl">
-              {story.title}
-            </CardTitle>
-          </div>
+    <article
+      id={`story-${story.storyKey}`}
+      className={`border-ink/25 bg-transparent ${
+        isLead
+          ? "border-b pb-5 md:border-b-0 md:border-r md:pr-6"
+          : isCompact
+            ? "border-b pb-4"
+            : "border-b pb-6"
+      }`}
+    >
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+        <span>{storyBeat(story)}</span>
+        {story.createdAt && <span>• {formatShortDate(story.createdAt)}</span>}
+      </div>
 
-          {/* Audio controls */}
-          {story.audioSegment && (
-            <div className="flex flex-shrink-0 flex-col items-end gap-1.5">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleListenFromHere}
-                className="h-8 gap-1.5 text-xs"
-              >
-                <Headphones className="h-3.5 w-3.5" />
-                Listen from here
-              </Button>
-              <span className="text-[10px] text-muted-foreground">
-                <Play className="mr-0.5 inline h-2.5 w-2.5" />
-                {formatDurationSec(story.audioSegment.durationMs)}
-                {" · "}anchor {story.audioSegment.anchor}
-              </span>
-            </div>
-          )}
-        </div>
+      <h2
+        className={`font-serif font-black leading-[0.95] tracking-[-0.035em] text-ink ${
+          isLead
+            ? "text-4xl md:text-5xl lg:text-6xl"
+            : isCompact
+              ? "text-xl md:text-2xl"
+              : "text-2xl md:text-3xl"
+        }`}
+      >
+        {story.title}
+      </h2>
 
-        {/* Badges */}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <StoryBadges badges={story.badges} />
-      </CardHeader>
+        {story.audioSegment && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleListenFromHere}
+            className="h-8 rounded-none border-ink/30 bg-white/40 gap-1.5 text-xs"
+          >
+            <Headphones className="h-3.5 w-3.5" />
+            Listen from here
+          </Button>
+        )}
+        {story.audioSegment && (
+          <span className="text-[10px] text-muted-foreground">
+            <Play className="mr-0.5 inline h-2.5 w-2.5" />
+            {formatDurationSec(story.audioSegment.durationMs)} · anchor {story.audioSegment.anchor}
+          </span>
+        )}
+      </div>
 
-      <CardContent className="space-y-4">
-        {/* Summary */}
-        <p className="text-base leading-relaxed text-foreground/85">
+      {story.summary && (
+        <p
+          className={`mt-4 text-foreground/90 ${
+            isLead
+              ? "font-serif text-xl leading-relaxed first-letter:float-left first-letter:mr-2 first-letter:font-serif first-letter:text-6xl first-letter:font-black first-letter:leading-[0.82]"
+              : "text-sm leading-relaxed"
+          }`}
+        >
           {story.summary}
         </p>
+      )}
 
-        {/* Summary bullets */}
-        {story.summaryBullets && story.summaryBullets.length > 0 && (
-          <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-            {story.summaryBullets.map((bullet, i) => (
-              <li key={i}>{bullet}</li>
-            ))}
-          </ul>
-        )}
+      {story.summaryBullets && story.summaryBullets.length > 0 && (
+        <ul
+          className={`mt-4 list-disc space-y-1 pl-5 text-muted-foreground ${
+            isCompact ? "text-xs" : "text-sm"
+          }`}
+        >
+          {story.summaryBullets.map((bullet, i) => (
+            <li key={i}>{bullet}</li>
+          ))}
+        </ul>
+      )}
 
-        {/* Attribution */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
-          {(story.canonicalPublisherName || story.sourceName) && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="font-medium">Source:</span>
-              {story.canonicalPublisherUrl ? (
-                <a
-                  href={story.canonicalPublisherUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-foreground"
-                >
-                  {story.canonicalPublisherName ?? story.canonicalPublisherUrl}
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              ) : (
-                <span>{story.canonicalPublisherName ?? story.sourceName}</span>
-              )}
-            </div>
-          )}
-
-          {story.sourceUrl && story.sourceUrl !== story.canonicalPublisherUrl && (
-            <a
-              href={story.sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-xs text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
-            >
-              Original article
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          )}
-        </div>
-
-        {/* Publication / update times */}
-        {story.createdAt && (
-          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-            <Clock className="h-3 w-3" />
-            <span>Published {formatShortDate(story.createdAt)}</span>
-          </div>
-        )}
-
-        {/* Evidence */}
-        <EvidenceSection story={story} />
-
-        {/* Media receipt */}
-        {story.receiptUrl ? (
-          <Alert>
-            <Radio className="h-4 w-4" />
-            <AlertTitle>Media receipt</AlertTitle>
-            <AlertDescription>
+      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-ink/10 pt-3">
+        {(story.canonicalPublisherName || story.sourceName) && (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="font-bold uppercase tracking-wider">Source</span>
+            {story.canonicalPublisherUrl ? (
               <a
-                href={story.receiptUrl}
+                href={story.canonicalPublisherUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="underline decoration-dotted underline-offset-2 hover:text-foreground"
+                className="flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-foreground"
               >
-                View proof object
+                {story.canonicalPublisherName ?? story.canonicalPublisherUrl}
+                <ExternalLink className="h-3 w-3" />
               </a>
-            </AlertDescription>
-          </Alert>
-        ) : (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Radio className="h-3 w-3" />
-            <span>No media receipt yet</span>
+            ) : (
+              <span>{story.canonicalPublisherName ?? story.sourceName}</span>
+            )}
           </div>
         )}
-      </CardContent>
-    </Card>
+
+        {story.sourceUrl && story.sourceUrl !== story.canonicalPublisherUrl && (
+          <a
+            href={story.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
+          >
+            Original article
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        )}
+      </div>
+
+      {!isCompact && (
+        <div className="mt-4 space-y-3">
+          <EvidenceSection story={story} />
+          {story.receiptUrl ? (
+            <Alert className="rounded-none border-ink/20 bg-white/40">
+              <Radio className="h-4 w-4" />
+              <AlertTitle>Media receipt</AlertTitle>
+              <AlertDescription>
+                <a
+                  href={story.receiptUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline decoration-dotted underline-offset-2 hover:text-foreground"
+                >
+                  View proof object
+                </a>
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Radio className="h-3 w-3" />
+              <span>No media receipt yet</span>
+            </div>
+          )}
+        </div>
+      )}
+    </article>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Receipt Bar
+// Newspaper furniture
 // ═══════════════════════════════════════════════════════════════
 
 function ReceiptBar({
@@ -480,13 +503,13 @@ function ReceiptBar({
   if (!receipts || receipts.length === 0) return null;
 
   return (
-    <div className="mt-6 space-y-2">
-      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-        Publication Receipts
+    <aside className="border border-ink/25 bg-white/35 p-4">
+      <p className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-muted-foreground">
+        <ListChecks className="h-3.5 w-3.5" /> Publication Receipts
       </p>
       <div className="flex flex-wrap gap-2">
         {receipts.map((r, i) => (
-          <Badge key={i} variant="outline" className="text-xs font-mono">
+          <Badge key={i} variant="outline" className="rounded-none border-ink/30 bg-transparent text-xs font-mono">
             {r.receiptType}: {r.status}
             {r.receiptUrl && (
               <>
@@ -504,7 +527,31 @@ function ReceiptBar({
           </Badge>
         ))}
       </div>
-    </div>
+    </aside>
+  );
+}
+
+function EditionIndex({ stories }: { stories: EditionStory[] }) {
+  if (stories.length === 0) return null;
+
+  return (
+    <aside className="border border-ink/25 bg-white/35 p-4">
+      <p className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-muted-foreground">
+        <Archive className="h-3.5 w-3.5" /> In this issue
+      </p>
+      <ol className="space-y-3 text-sm">
+        {stories.map((story, i) => (
+          <li key={story.storyKey} className="border-b border-ink/10 pb-2 last:border-0 last:pb-0">
+            <a href={`#story-${story.storyKey}`} className="group grid grid-cols-[1.5rem_1fr] gap-2">
+              <span className="font-mono text-xs text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>
+              <span className="font-serif font-bold leading-tight group-hover:underline">
+                {story.title}
+              </span>
+            </a>
+          </li>
+        ))}
+      </ol>
+    </aside>
   );
 }
 
@@ -516,120 +563,182 @@ export function HomePage() {
   const publishedEditions = usePublishedEditions();
   const [selectedEditionKey, setSelectedEditionKey] = useState<string | null>(null);
 
-  // Use selected edition or fall back to latest
   const latestData = useLatestEdition();
   const selectedData = useEditionByKey(selectedEditionKey ?? undefined);
   const data = selectedEditionKey ? selectedData : latestData;
   const health = useNewsroomHealth();
   const playerRef = useRef<AudioPlayerHandle>(null);
 
+  const leadStory = data?.stories[0];
+  const secondaryStories = data?.stories.slice(1, 3) ?? [];
+  const remainingStories = data?.stories.slice(3) ?? [];
+  const allStories = data?.stories ?? [];
+  const issueStats = useMemo(() => {
+    const sourceCount = new Set(
+      allStories
+        .map((story) => story.canonicalPublisherName || story.sourceName)
+        .filter(Boolean),
+    ).size;
+    const claimCount = allStories.reduce(
+      (sum, story) => sum + (story.claims?.length ?? 0),
+      0,
+    );
+    return { sourceCount, claimCount };
+  }, [allStories]);
+
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 md:py-12">
-      <Masthead publishedAt={data?.edition.publishedAt} health={health} />
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(120,93,55,0.08),_transparent_34rem)]">
+      <div className="mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-10">
+        <Masthead publishedAt={data?.edition.publishedAt} health={health} />
 
-      {/* Edition selector */}
-      {publishedEditions && publishedEditions.length > 1 && (
-        <div className="mb-6 flex items-center justify-center gap-2">
-          <select
-            value={selectedEditionKey ?? ""}
-            onChange={(e) => setSelectedEditionKey(e.target.value || null)}
-            className="rounded border bg-white px-3 py-1.5 text-sm font-medium"
-          >
-            <option value="">Latest edition</option>
-            {publishedEditions.map((ed) => (
-              <option key={ed.editionKey} value={ed.editionKey}>
-                {ed.title} — {ed.publishedAt ? new Date(ed.publishedAt).toLocaleDateString() : ""}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+        {publishedEditions && publishedEditions.length > 1 && (
+          <div className="mb-6 flex flex-wrap items-center justify-center gap-2 border-b border-ink/20 pb-4">
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+              Archive
+            </span>
+            <select
+              value={selectedEditionKey ?? ""}
+              onChange={(e) => setSelectedEditionKey(e.target.value || null)}
+              className="rounded-none border border-ink/30 bg-white/60 px-3 py-1.5 text-sm font-medium"
+            >
+              <option value="">Latest edition</option>
+              {publishedEditions.map((ed) => (
+                <option key={ed.editionKey} value={ed.editionKey}>
+                  {ed.title} — {ed.publishedAt ? new Date(ed.publishedAt).toLocaleDateString() : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
-      {data === undefined && <LoadingSkeleton />}
+        {data === undefined && <LoadingSkeleton />}
 
-      {data === null && <EmptyState />}
+        {data === null && <EmptyState />}
 
-      {data && (
-        <>
-          {/* Sticky Audio Player */}
-          {data.editionAudio && (
-            <div className="sticky top-0 z-30 -mx-4 mb-6 px-4 pb-3 pt-1 backdrop-blur-sm md:-mx-0 md:px-0">
-              <AudioPlayer
-                ref={playerRef}
-                fullAudioUrl={data.editionAudio.fullAudioUrl}
-                totalDurationMs={data.editionAudio.totalDurationMs}
-              />
-            </div>
-          )}
-
-          {/* Edition header */}
-          <div className="mb-6">
-            <div className="flex flex-wrap items-center gap-3">
-              <Badge variant="secondary" className="capitalize">
-                {data.edition.status}
-              </Badge>
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Calendar className="h-3.5 w-3.5" />
-                <span>{formatDate(data.edition.publishedAt)}</span>
+        {data && (
+          <>
+            {data.editionAudio && (
+              <div className="sticky top-0 z-30 -mx-4 mb-6 border-y border-ink/20 bg-newsprint/90 px-4 py-2 shadow-sm backdrop-blur-sm md:-mx-6 md:px-6">
+                <AudioPlayer
+                  ref={playerRef}
+                  fullAudioUrl={data.editionAudio.fullAudioUrl}
+                  totalDurationMs={data.editionAudio.totalDurationMs}
+                />
               </div>
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Clock className="h-3.5 w-3.5" />
-                <span>Updated {formatTime(data.edition.updatedAt)}</span>
-              </div>
-            </div>
-            <h2 className="mt-3 font-serif text-2xl font-semibold md:text-3xl">
-              {data.edition.title}
-            </h2>
-            {data.edition.subtitle && (
-              <p className="mt-1 text-muted-foreground">
-                {data.edition.subtitle}
-              </p>
             )}
-          </div>
 
-          <Separator className="my-6" />
+            <section className="mb-6 grid gap-4 border-b border-ink/25 pb-5 md:grid-cols-[1fr_auto_1fr] md:items-end">
+              <div>
+                <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                  <Badge variant="secondary" className="rounded-none capitalize">
+                    {data.edition.status}
+                  </Badge>
+                  <span className="flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5" /> {formatDate(data.edition.publishedAt)}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5" /> Updated {formatTime(data.edition.updatedAt)}
+                  </span>
+                </div>
+                <h2 className="mt-3 font-serif text-3xl font-black leading-none tracking-tight md:text-5xl">
+                  {data.edition.title}
+                </h2>
+              </div>
 
-          {/* Stories */}
-          <div className="space-y-8">
-            {data.stories.map((story) => (
-              <StoryCard
-                key={story.storyKey}
-                story={story}
-                playerRef={playerRef}
-              />
-            ))}
-          </div>
+              <div className="hidden h-20 w-px bg-ink/20 md:block" />
 
-          {/* Receipts */}
-          <ReceiptBar receipts={data.receipts} />
+              <div className="md:text-right">
+                {data.edition.subtitle && (
+                  <p className="font-serif text-lg italic leading-snug text-muted-foreground">
+                    {data.edition.subtitle}
+                  </p>
+                )}
+                <div className="mt-3 flex flex-wrap gap-2 md:justify-end">
+                  <Badge variant="outline" className="rounded-none border-ink/30 bg-transparent font-mono">
+                    {allStories.length} stories
+                  </Badge>
+                  <Badge variant="outline" className="rounded-none border-ink/30 bg-transparent font-mono">
+                    {issueStats.sourceCount} sources
+                  </Badge>
+                  <Badge variant="outline" className="rounded-none border-ink/30 bg-transparent font-mono">
+                    {issueStats.claimCount} checked claims
+                  </Badge>
+                </div>
+              </div>
+            </section>
 
-          {/* Navigation footer */}
-          <div className="mt-10 flex justify-center gap-3">
-            <Button variant="outline" size="sm" asChild>
-              <Link
-                to={`/editions/${data.edition.editionKey}`}
-                className="gap-1.5"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                Permalink to this edition
-              </Link>
-            </Button>
-            <Button variant="outline" size="sm" asChild>
-              <Link to="/mission-control" className="gap-1.5">
-                <Activity className="h-3.5 w-3.5" />
-                Mission Control
-              </Link>
-            </Button>
-          </div>
-        </>
-      )}
+            {leadStory && (
+              <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+                <div className="grid gap-6 md:grid-cols-[minmax(0,1.35fr)_minmax(16rem,0.65fr)]">
+                  <StoryCard story={leadStory} playerRef={playerRef} variant="lead" />
+                  <div className="space-y-5">
+                    {secondaryStories.map((story) => (
+                      <StoryCard
+                        key={story.storyKey}
+                        story={story}
+                        playerRef={playerRef}
+                        variant="compact"
+                      />
+                    ))}
+                  </div>
+                </div>
 
-      <footer className="mt-16 border-t pt-6 text-center text-xs text-muted-foreground">
-        <p>
-          Overnight Newsroom &copy; {new Date().getFullYear()} &middot; Built
-          while you sleep
-        </p>
-      </footer>
+                <div className="space-y-4 lg:border-l lg:border-ink/25 lg:pl-6">
+                  <EditionIndex stories={allStories} />
+                  <ReceiptBar receipts={data.receipts} />
+                  <div className="border border-ink/25 bg-white/35 p-4 text-xs leading-relaxed text-muted-foreground">
+                    <p className="mb-2 font-black uppercase tracking-[0.2em]">Proof desk</p>
+                    <p>
+                      Every article links back to source receipts, fact-check verdicts, Mission Control traces, and audio chapter timing where available.
+                    </p>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {remainingStories.length > 0 && (
+              <>
+                <div className="my-8 flex items-center gap-3">
+                  <Separator className="flex-1 bg-ink/25" />
+                  <span className="font-serif text-xl font-black uppercase tracking-wide">More from this edition</span>
+                  <Separator className="flex-1 bg-ink/25" />
+                </div>
+                <section className="grid gap-x-6 gap-y-8 md:grid-cols-2 lg:grid-cols-3">
+                  {remainingStories.map((story) => (
+                    <StoryCard
+                      key={story.storyKey}
+                      story={story}
+                      playerRef={playerRef}
+                      variant="standard"
+                    />
+                  ))}
+                </section>
+              </>
+            )}
+
+            <div className="mt-10 flex flex-wrap justify-center gap-3 border-t border-ink/25 pt-6">
+              <Button variant="outline" size="sm" asChild className="rounded-none border-ink/30 bg-white/40">
+                <Link to={`/editions/${data.edition.editionKey}`} className="gap-1.5">
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Permalink to this edition
+                </Link>
+              </Button>
+              <Button variant="outline" size="sm" asChild className="rounded-none border-ink/30 bg-white/40">
+                <Link to="/mission-control" className="gap-1.5">
+                  <Activity className="h-3.5 w-3.5" />
+                  Mission Control
+                </Link>
+              </Button>
+            </div>
+          </>
+        )}
+
+        <footer className="mt-16 border-t border-ink/25 pt-6 text-center text-xs text-muted-foreground">
+          <p>
+            Overnight Newsroom &copy; {new Date().getFullYear()} &middot; Built while you sleep
+          </p>
+        </footer>
+      </div>
     </div>
   );
 }
