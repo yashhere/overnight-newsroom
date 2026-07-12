@@ -353,9 +353,12 @@ export const getMissionControl = query({
     }> = [];
 
     if (plan) {
+      // Use editionKey as the primary lookup. Live runs can persist role specs
+      // with a planId that differs from the selected plan row after retries or
+      // test harnesses, but editionKey is stable for the newsroom run.
       const rawSpecs = await ctx.db
         .query("roleSpecs")
-        .withIndex("by_planId", (q) => q.eq("planId", plan.planId))
+        .withIndex("by_editionKey_roleId", (q) => q.eq("editionKey", editionKey))
         .collect();
 
       roleSpecs = rawSpecs.map((rs) => ({
@@ -450,19 +453,46 @@ export const getMissionControl = query({
       (e) => e.createdAt >= todayStart.getTime(),
     ).length;
 
-    // ── All editions list ─────────────────────────────────────
+    // ── All editions/runs list ────────────────────────────────
+    // Published editions are inserted late in the pipeline, but Mission
+    // Control must be selectable as soon as the editorial plan exists.
     const allEditions = await ctx.db
       .query("editions")
       .withIndex("by_createdAt")
       .order("desc")
       .take(20);
 
-    const editionsList = allEditions.map((e) => ({
-      editionKey: e.editionKey,
-      title: e.title,
-      status: e.status,
-      createdAt: e.createdAt,
-    }));
+    const recentPlans = await ctx.db
+      .query("editorialPlans")
+      .withIndex("by_createdAt")
+      .order("desc")
+      .take(20);
+
+    const editionByKey = new Map(allEditions.map((e) => [e.editionKey, e]));
+    const editionListByKey = new Map<string, { editionKey: string; title: string; status: string; createdAt: number }>();
+
+    for (const planItem of recentPlans) {
+      const matchingEdition = editionByKey.get(planItem.editionKey);
+      editionListByKey.set(planItem.editionKey, {
+        editionKey: planItem.editionKey,
+        title: matchingEdition?.title ?? `Live run — ${planItem.editorialDirection.slice(0, 48)}`,
+        status: matchingEdition?.status ?? "running",
+        createdAt: matchingEdition?.createdAt ?? planItem.createdAt,
+      });
+    }
+
+    for (const e of allEditions) {
+      editionListByKey.set(e.editionKey, {
+        editionKey: e.editionKey,
+        title: e.title,
+        status: e.status,
+        createdAt: e.createdAt,
+      });
+    }
+
+    const editionsList = Array.from(editionListByKey.values())
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 20);
 
     // ══════════════════════════════════════════════════════════
     // Build agents list (left pane)
@@ -1223,7 +1253,7 @@ export const getRoleTrace = query({
   },
 });
 
-/** Get all editions for the selector dropdown. */
+/** Get all editions/runs for the selector dropdown. */
 export const getEditionsForSelector = query({
   args: {},
   handler: async (ctx) => {
@@ -1233,12 +1263,44 @@ export const getEditionsForSelector = query({
       .order("desc")
       .take(50);
 
-    return editions.map((e) => ({
-      editionKey: e.editionKey,
-      title: e.title,
-      status: e.status,
-      createdAt: e.createdAt,
-      publishedAt: e.publishedAt,
-    }));
+    const plans = await ctx.db
+      .query("editorialPlans")
+      .withIndex("by_createdAt")
+      .order("desc")
+      .take(50);
+
+    const editionByKey = new Map(editions.map((e) => [e.editionKey, e]));
+    const itemsByKey = new Map<string, {
+      editionKey: string;
+      title: string;
+      status: string;
+      createdAt: number;
+      publishedAt?: number;
+    }>();
+
+    for (const planItem of plans) {
+      const matchingEdition = editionByKey.get(planItem.editionKey);
+      itemsByKey.set(planItem.editionKey, {
+        editionKey: planItem.editionKey,
+        title: matchingEdition?.title ?? `Live run — ${planItem.editorialDirection.slice(0, 48)}`,
+        status: matchingEdition?.status ?? "running",
+        createdAt: matchingEdition?.createdAt ?? planItem.createdAt,
+        publishedAt: matchingEdition?.publishedAt,
+      });
+    }
+
+    for (const e of editions) {
+      itemsByKey.set(e.editionKey, {
+        editionKey: e.editionKey,
+        title: e.title,
+        status: e.status,
+        createdAt: e.createdAt,
+        publishedAt: e.publishedAt,
+      });
+    }
+
+    return Array.from(itemsByKey.values())
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 50);
   },
 });
