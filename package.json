@@ -8,15 +8,18 @@
   ],
   "scripts": {
     "convex:dev": "convex dev",
+    "convex:codegen": "CONVEX_AGENT_MODE=anonymous npx convex dev --once",
     "convex:deploy": "convex deploy",
     "svc:build": "cd services/ingestion && npm run build",
     "svc:test": "cd services/ingestion && npm run test",
     "svc:poll": "cd services/ingestion && node dist/poller.js",
     "svc:enrich": "cd services/ingestion && node dist/enricher.js",
     "web:dev": "cd apps/public-site && npm run dev",
-    "web:build": "cd apps/public-site && npm run build",
+    "web:build": "npm run convex:codegen && cd apps/public-site && npm run build",
     "web:preview": "cd apps/public-site && npm run preview",
-    "web:lint": "cd apps/public-site && npm run lint"
+    "web:test": "cd apps/public-site && npm run test",
+    "web:lint": "cd apps/public-site && npm run lint",
+    "test": "npm run web:test"
   },
   "dependencies": {
     "convex": "^1.42.1"
