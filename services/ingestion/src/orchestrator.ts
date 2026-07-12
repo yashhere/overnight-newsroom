@@ -12,6 +12,7 @@ import { ConvexHttpClient } from "convex/browser";
 const POLL_INTERVAL_MS = Number(process.env.ORCHESTRATOR_POLL_MS || "300000"); // 5 min
 const EDITION_INTERVAL_MS = Number(process.env.ORCHESTRATOR_EDITION_MS || "1800000"); // 30 min
 const MAX_RETRIES = 3;
+const ONCE_MODE = process.argv.includes("--once");
 
 // ── Convex client ──────────────────────────────────────────────────
 const client = new ConvexHttpClient(process.env.CONVEX_URL || "");
@@ -144,7 +145,6 @@ async function runEdition(): Promise<boolean> {
   }));
 
   const editionKey = `edition-${Date.now()}`;
-  const onceMode = process.argv.includes("--once");
   const maxRoles = process.argv.includes("--one") ? 1 : 4;
 
   // 3. Derive editorial plan
@@ -178,20 +178,61 @@ async function runEdition(): Promise<boolean> {
   );
   console.log("[orch]   ✓ Plan persisted");
 
-  // 5. Run workers (sequential — Hermes is slow)
+  // Persist role specs immediately so Mission Control's Planned column has
+  // observable work before workers complete.
+  for (const role of (plan.roles || [])) {
+    const roleId = role.roleId || role.name || "worker";
+    await callM("editorial:upsertRoleSpec", {
+      planId,
+      editionKey,
+      roleId,
+      name: role.name || roleId,
+      rationale: role.rationale || "Selected by editor-in-chief",
+      assignedClusterIds: (role.assignedClusterIds || []).map(String),
+      mission: role.mission || "Report assigned story",
+      allowedTools: role.allowedTools || ["web_search"],
+      guardrails: role.guardrails || [],
+      successCriteria: role.successCriteria || [],
+      parentTrace: "editor-in-chief",
+      tokenBudget: role.tokenBudget || 500,
+      timeBudgetMs: role.timeBudgetMs || 300000,
+      wasNamed: Boolean(role.wasNamed),
+      rawHermesResponse: JSON.stringify(role).slice(0, 2000),
+    }).catch((err: any) => console.warn(`[orch]   role spec persist failed for ${roleId}: ${err.message}`));
+  }
+  console.log(`[orch]   ✓ ${(plan.roles || []).length} role specs persisted`);
+
+  // 5. Run workers (sequential — Hermes/OpenAI is slow)
   console.log("[orch] 3. Running workers...");
   const allStories: any[] = [];
   const rolesToRun = (plan.roles || []).slice(0, maxRoles);
   for (const role of (plan.roles || [])) {
-    console.log(`[orch]   Running ${role.roleId || role.name}...`);
+    const roleId = role.roleId || role.name || "worker";
+    console.log(`[orch]   Running ${roleId}...`);
     const assignedCandidates = candidates.filter((c: any) =>
       (role.assignedClusterIds || []).includes(c.clusterId)
     );
 
+    const traceNodeId = `${editionKey}:${roleId}:agent`;
+    const workerStartedAt = Date.now();
+    await callM("missionControl:recordTraceNode", {
+      editionKey,
+      nodeId: traceNodeId,
+      parentNodeId: "editor-in-chief",
+      roleId,
+      roleName: role.name || roleId,
+      beat: assignedCandidates[0]?.suggestedBeat || "general",
+      assignment: role.mission || "Report assigned story",
+      status: "running",
+      kind: "agent_session",
+      inputSummary: `${assignedCandidates.length} assigned candidate(s)` ,
+      startedAt: workerStartedAt,
+    }).catch(() => {});
+
     const workerPrompt = `You are ${role.name || role.roleId}. Mission: ${role.mission}. Write a news story. Output JSON: { "story": { "title": "...", "summary": "...", "summaryBullets": ["..."], "beat": "...", "confidence": 0.0-1.0, "sources": [{"url":"...","name":"...","accessed":true}] }, "selfAssessment": { "meetsCriteria": true/false, "reasoning": "..." } }`;
 
     try {
-      const workerRaw = await withRetry(`worker-${role.roleId}`, () =>
+      const workerRaw = await withRetry(`worker-${roleId}`, () =>
         callHermes(workerPrompt, JSON.stringify({ role, assignedCandidates }))
       );
       const workerOutput = extractJson(workerRaw);
@@ -200,7 +241,7 @@ async function runEdition(): Promise<boolean> {
       // Persist worker result
       await callM("editorial:upsertWorkerResult", {
         editionKey, resultId: randomUUID(),
-        roleId: role.roleId || role.name || "worker",
+        roleId,
         title: story.title || "Untitled",
         summary: story.summary || "",
         summaryBullets: story.summaryBullets || [],
@@ -217,8 +258,24 @@ async function runEdition(): Promise<boolean> {
         tokensUsed: 0, estimatedCostCents: 0, latencyMs: 0,
       });
 
+      await callM("missionControl:recordTraceNode", {
+        editionKey,
+        nodeId: traceNodeId,
+        parentNodeId: "editor-in-chief",
+        roleId,
+        roleName: role.name || roleId,
+        beat: story.beat || "general",
+        assignment: story.title || role.mission || "Completed story",
+        status: "completed",
+        kind: "agent_session",
+        latencyMs: Date.now() - workerStartedAt,
+        outputSummary: (story.summary || story.summaryBullets?.join(" ") || "Story completed").slice(0, 500),
+        startedAt: workerStartedAt,
+        finishedAt: Date.now(),
+      }).catch(() => {});
+
       allStories.push({
-        roleId: role.roleId || role.name,
+        roleId,
         title: story.title,
         summary: story.summary,
         summaryBullets: story.summaryBullets || [],
@@ -229,6 +286,21 @@ async function runEdition(): Promise<boolean> {
       console.log(`[orch]     ✓ "${(story.title || "").slice(0, 50)}..."`);
     } catch (err: any) {
       console.log(`[orch]     ✗ Failed: ${err.message}`);
+      await callM("missionControl:recordTraceNode", {
+        editionKey,
+        nodeId: traceNodeId,
+        parentNodeId: "editor-in-chief",
+        roleId,
+        roleName: role.name || roleId,
+        beat: assignedCandidates[0]?.suggestedBeat || "general",
+        assignment: role.mission || "Report assigned story",
+        status: "failed",
+        kind: "agent_session",
+        latencyMs: Date.now() - workerStartedAt,
+        errorMessage: String(err.message || err).slice(0, 500),
+        startedAt: workerStartedAt,
+        finishedAt: Date.now(),
+      }).catch(() => {});
       // Continue with other roles even if one fails
     }
   }
@@ -247,19 +319,31 @@ async function runEdition(): Promise<boolean> {
     return true;
   });
 
-  // Persist verdicts
+  // Persist claims + verdicts so Mission Control's Fact Check column has
+  // observable artifacts. Keep this lightweight until full judge integration.
   for (const story of allStories) {
     const isBlocked = blocked.includes(story);
-    await callM("editorial:recordVerdict", {
-      claimId: randomUUID(), editionKey,
+    const claimId = randomUUID();
+    const storyKey = `${editionKey}-${story.roleId}`;
+    await callM("judge:upsertClaim", {
+      claimId,
+      editionKey,
+      claim: story.summaryBullets?.[0] || story.summary || story.title || "Story claim",
+      storyKey,
+      roleId: story.roleId,
+      sourceLines: (story.sources || []).map((s: any) => s.url || s.name || "source").filter(Boolean),
+    }).catch(() => {});
+    await callM("judge:recordVerdict", {
+      claimId,
+      editionKey,
       verdict: isBlocked ? "block" : "approved",
       reason: isBlocked ? "Low confidence" : "Passed confidence threshold",
-      evidenceJson: "[]",
+      evidenceJson: JSON.stringify((story.sources || []).map((s: any) => ({ url: s.url || "", name: s.name || "Source" }))),
       receiptsCorroborated: !isBlocked,
       linkupCorroborated: false,
       confidence: story.confidence,
       tokensUsed: 0, estimatedCostCents: 0, latencyMs: 0,
-    }).catch(() => {}); // best-effort
+    }).catch(() => {});
   }
   console.log(`[orch]   ✓ ${approved.length} approved, ${blocked.length} blocked`);
 
@@ -315,10 +399,10 @@ async function main() {
     const now = Date.now();
 
     // Check if enough time has passed since last edition
-    if (onceMode || now - lastEditionAt >= EDITION_INTERVAL_MS) {
+    if (ONCE_MODE || now - lastEditionAt >= EDITION_INTERVAL_MS) {
       try {
         const success = await runEdition();
-        if (success) { lastEditionAt = now; if (onceMode) { console.log("[orch] --once mode: exiting after edition"); process.exit(0); } }
+        if (success) { lastEditionAt = now; if (ONCE_MODE) { console.log("[orch] --once mode: exiting after edition"); process.exit(0); } }
       } catch (err: any) {
         console.error(`[orch] Edition failed: ${err.message}`);
         // Wait a bit before retrying

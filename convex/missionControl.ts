@@ -312,6 +312,36 @@ export const getMissionControl = query({
         timeBudgetMs: rs.timeBudgetMs,
         createdAt: rs.createdAt,
       }));
+
+      // Older orchestrator runs persisted the plan but forgot roleSpecs.
+      // Reconstruct enough role spec data from rawHermesResponse so Planned /
+      // Reporting can still be observed for existing editions.
+      if (roleSpecs.length === 0 && plans[0].rawHermesResponse) {
+        try {
+          const parsed = JSON.parse(plans[0].rawHermesResponse);
+          const rawRoles = Array.isArray(parsed.roles) ? parsed.roles : [];
+          roleSpecs = rawRoles.map((r: any, i: number) => ({
+            roleId: String(r.roleId || r.name || `role-${i + 1}`),
+            name: String(r.name || r.roleId || `Role ${i + 1}`),
+            rationale: String(r.rationale || "Reconstructed from saved plan"),
+            assignedClusterIds: Array.isArray(r.assignedClusterIds)
+              ? r.assignedClusterIds.map(String)
+              : [],
+            mission: String(r.mission || "Newsroom assignment"),
+            allowedTools: Array.isArray(r.allowedTools) ? r.allowedTools.map(String) : [],
+            guardrails: Array.isArray(r.guardrails) ? r.guardrails.map(String) : [],
+            successCriteria: Array.isArray(r.successCriteria)
+              ? r.successCriteria.map(String)
+              : [],
+            parentTrace: "editor-in-chief",
+            tokenBudget: Number(r.tokenBudget || 500),
+            timeBudgetMs: Number(r.timeBudgetMs || 300000),
+            createdAt: plans[0].createdAt,
+          }));
+        } catch {
+          // Keep empty — dashboard will show discovered/worker fallback state.
+        }
+      }
     }
 
     // ── Worker Results ────────────────────────────────────────
@@ -525,7 +555,9 @@ export const getMissionControl = query({
       done: [],
     };
 
-    // Fetch audio segments for this edition to determine voice stage
+    // Fetch audio, published stories, claims, and verdicts. The board is an
+    // observability phase board: each column is populated by the artifact that
+    // proves that phase happened, rather than only by the story's latest state.
     const audioSegments = await ctx.db
       .query("audioSegments")
       .withIndex("by_editionKey_turnIndex", (q: any) =>
@@ -534,7 +566,21 @@ export const getMissionControl = query({
       .order("asc")
       .collect();
 
-    // Fetch edition stories (for publish/done columns)
+    const claims = await ctx.db
+      .query("claims")
+      .withIndex("by_editionKey", (q: any) => q.eq("editionKey", editionKey))
+      .collect();
+
+    const verdicts = await ctx.db
+      .query("verdicts")
+      .withIndex("by_editionKey", (q: any) => q.eq("editionKey", editionKey))
+      .collect();
+
+    const claimById = new Map(claims.map((c: any) => [c.claimId, c]));
+    const verdictByClaimId = new Map(verdicts.map((v: any) => [v.claimId, v]));
+    const workerByRoleId = new Map(workerResults.map((wr: any) => [wr.roleId, wr]));
+    const roleSpecByRoleId = new Map(roleSpecs.map((rs) => [rs.roleId, rs]));
+
     let editionStoryMap = new Map<string, any>();
     if (editions.length > 0) {
       const eStories = await ctx.db
@@ -544,127 +590,129 @@ export const getMissionControl = query({
         )
         .order("asc")
         .collect();
-      for (const es of eStories) {
-        editionStoryMap.set(es.storyKey, es);
-      }
+      for (const es of eStories) editionStoryMap.set(es.storyKey, es);
     }
 
     const isEditionDone =
       edition?.status === "published" || edition?.status === "archived";
 
-    // ── 1. Map each worker result through pipeline stages ──
-
-    for (const wr of workerResults) {
-      const spec = roleSpecs.find((rs) => rs.roleId === wr.roleId);
-      const roleRevisions = revisionLoops.filter(
-        (rl) => rl.roleId === wr.roleId,
-      );
-      const pendingRevision = roleRevisions.some(
-        (rl) => rl.disposition === "pending",
-      );
-      const rejectedRevision = roleRevisions.some(
-        (rl) => rl.disposition === "rejected",
-      );
-      const hasAudio = audioSegments.some(
-        (seg: any) => seg.turnIndex === workerResults.indexOf(wr),
-      );
-      const isPublished = [...editionStoryMap.values()].some(
-        (es: any) =>
-          es.title === wr.title ||
-          es.clusterId &&
-          spec?.assignedClusterIds.includes(es.clusterId),
-      );
-
-      // Determine stage from actual work state
-      let stage: string;
-      let storyTitle = wr.title || spec?.name + " story";
-
-      if (isEditionDone && isPublished) {
-        stage = "done";
-      } else if (isPublished) {
-        stage = "publish";
-      } else if (hasAudio) {
-        stage = "voice";
-      } else if (pendingRevision || rejectedRevision) {
-        stage = "fact_check";
-      } else if (
-        wr.validationStatus === "valid" ||
-        wr.validationStatus === "repaired"
-      ) {
-        stage = "drafting";
-      } else if (wr.validationStatus === "invalid") {
-        // Invalid but not yet under revision — still reporting
-        stage = "reporting";
-      } else {
-        stage = "reporting";
+    // ── Planned: role specs / assignments ─────────────────────
+    for (const spec of roleSpecs) {
+      const assigned = spec.assignedClusterIds.length > 0
+        ? spec.assignedClusterIds
+        : [`${spec.roleId}-assignment`];
+      for (const cid of assigned) {
+        storyBoard["planned"].push({
+          storyId: `planned:${spec.roleId}:${cid}`,
+          title: `${spec.name}: ${spec.mission.slice(0, 90)}`,
+          stage: "planned",
+          roleId: spec.roleId,
+          roleName: spec.name,
+          beat: undefined,
+          confidence: undefined,
+          clusterId: cid === `${spec.roleId}-assignment` ? undefined : cid,
+        });
       }
+    }
 
-      storyBoard[stage].push({
-        storyId: wr.resultId,
-        title: storyTitle,
-        stage,
-        roleId: wr.roleId,
-        roleName: spec?.name,
-        beat: wr.beat,
-        confidence: wr.confidence,
+    // ── Reporting: agent session traces ───────────────────────
+    for (const tn of traceNodes.filter((t: any) => t.kind === "agent_session" && t.roleId)) {
+      const spec = roleSpecByRoleId.get(tn.roleId!);
+      storyBoard["reporting"].push({
+        storyId: `reporting:${tn.nodeId}`,
+        title: tn.assignment || spec?.mission || tn.roleName || tn.roleId!,
+        stage: "reporting",
+        roleId: tn.roleId,
+        roleName: tn.roleName || spec?.name,
+        beat: tn.beat,
+        confidence: undefined,
         clusterId: undefined,
       });
     }
 
-    // ── 2. Role specs without worker results yet → planned/reporting ──
-
-    const rolesWithResults = new Set(workerResults.map((wr) => wr.roleId));
+    // If no traces exist yet, show role specs that are not drafted as pending reporting.
+    const rolesWithDrafts = new Set(workerResults.map((wr: any) => wr.roleId));
     for (const spec of roleSpecs) {
-      if (rolesWithResults.has(spec.roleId)) continue;
-
-      const roleTraces = traceNodes.filter(
-        (tn) => tn.roleId === spec.roleId,
-      );
-      const isRunning = roleTraces.some((tn) => tn.status === "running");
-
-      // Create a kanban card for each assigned cluster
-      for (const cid of spec.assignedClusterIds) {
-        const stage = isRunning ? "reporting" : "planned";
-        storyBoard[stage].push({
-          storyId: `${spec.roleId}-${cid}`,
-          title: `${spec.name}: ${cid.slice(0, 30)}`,
-          stage,
-          roleId: spec.roleId,
-          roleName: spec.name,
-          beat: undefined,
-          confidence: undefined,
-          clusterId: cid,
-        });
-      }
-
-      // If no clusters assigned, show the role itself
-      if (spec.assignedClusterIds.length === 0) {
-        const stage = isRunning ? "reporting" : "planned";
-        storyBoard[stage].push({
-          storyId: `${spec.roleId}-pending`,
-          title: spec.name,
-          stage,
-          roleId: spec.roleId,
-          roleName: spec.name,
-          beat: undefined,
-          confidence: undefined,
-          clusterId: undefined,
-        });
-      }
+      if (rolesWithDrafts.has(spec.roleId)) continue;
+      storyBoard["reporting"].push({
+        storyId: `reporting-pending:${spec.roleId}`,
+        title: spec.mission || spec.name,
+        stage: "reporting",
+        roleId: spec.roleId,
+        roleName: spec.name,
+        beat: undefined,
+        confidence: undefined,
+        clusterId: spec.assignedClusterIds[0],
+      });
     }
 
-    // ── 3. Edition stories already published → publish/done ──
+    // ── Drafting: worker results / generated drafts ───────────
+    for (const wr of workerResults) {
+      const spec = roleSpecByRoleId.get(wr.roleId);
+      storyBoard["drafting"].push({
+        storyId: `draft:${wr.resultId}`,
+        title: wr.title,
+        stage: "drafting",
+        roleId: wr.roleId,
+        roleName: spec?.name || wr.roleId,
+        beat: wr.beat,
+        confidence: wr.confidence,
+        clusterId: spec?.assignedClusterIds[0],
+      });
+    }
 
+    // ── Fact Check: claims + verdicts ─────────────────────────
+    for (const claim of claims) {
+      const verdict = verdictByClaimId.get(claim.claimId);
+      const spec = roleSpecByRoleId.get(claim.roleId);
+      storyBoard["fact_check"].push({
+        storyId: `fact:${claim.claimId}`,
+        title: `${verdict?.verdict ?? "pending"}: ${claim.claim}`,
+        stage: "fact_check",
+        roleId: claim.roleId,
+        roleName: spec?.name || claim.roleId,
+        beat: workerByRoleId.get(claim.roleId)?.beat,
+        confidence: verdict?.confidence,
+        clusterId: undefined,
+      });
+    }
+
+    // Verdicts without a claim (legacy/best-effort writes) still surface.
+    for (const verdict of verdicts) {
+      if (claimById.has(verdict.claimId)) continue;
+      storyBoard["fact_check"].push({
+        storyId: `fact-verdict:${verdict.claimId}`,
+        title: `${verdict.verdict}: ${verdict.reason}`,
+        stage: "fact_check",
+        roleId: undefined,
+        roleName: undefined,
+        beat: undefined,
+        confidence: verdict.confidence,
+        clusterId: undefined,
+      });
+    }
+
+    // ── Voice: audio render artifacts ─────────────────────────
+    for (const segment of audioSegments) {
+      const wr = workerResults[segment.turnIndex];
+      const spec = wr ? roleSpecByRoleId.get(wr.roleId) : undefined;
+      storyBoard["voice"].push({
+        storyId: `voice:${segment.segmentId}`,
+        title: segment.text.slice(0, 100),
+        stage: "voice",
+        roleId: wr?.roleId,
+        roleName: spec?.name || wr?.roleId,
+        beat: wr?.beat,
+        confidence: undefined,
+        clusterId: spec?.assignedClusterIds[0],
+      });
+    }
+
+    // ── Publish/Done: edition story artifacts ─────────────────
     for (const [storyKey, es] of editionStoryMap) {
-      // Skip if already added via worker result
-      const alreadyAdded = storyBoard["publish"].some(
-        (s) => s.title === es.title,
-      ) && storyBoard["done"].some((s) => s.title === es.title);
-      if (alreadyAdded) continue;
-
       const stage = isEditionDone ? "done" : "publish";
       storyBoard[stage].push({
-        storyId: storyKey,
+        storyId: `${stage}:${storyKey}`,
         title: es.title,
         stage,
         roleId: undefined,
@@ -675,23 +723,17 @@ export const getMissionControl = query({
       });
     }
 
-    // ── 4. Discovered clusters (not yet assigned to any role) ──
-
-    // Collect all cluster IDs already in the kanban
+    // ── Discovered: unassigned ingestion clusters ─────────────
     const usedClusterIds = new Set<string>();
     for (const stage of Object.keys(storyBoard)) {
       for (const card of storyBoard[stage]) {
         if (card.clusterId) usedClusterIds.add(card.clusterId);
       }
     }
-    // Also collect cluster IDs from assignedClusterIds in roleSpecs
     for (const spec of roleSpecs) {
-      for (const cid of spec.assignedClusterIds) {
-        usedClusterIds.add(cid);
-      }
+      for (const cid of spec.assignedClusterIds) usedClusterIds.add(cid);
     }
 
-    // Fetch all recent story clusters from the ingestion pipeline
     const discoveredClusters = await ctx.db
       .query("storyClusters")
       .withIndex("by_status_lastSeenAt", (q: any) =>
@@ -708,18 +750,13 @@ export const getMissionControl = query({
       .order("desc")
       .take(30);
 
-    const allClusters = [...discoveredClusters, ...summarizedClusters];
-
-    // Add clusters that aren't yet in the kanban to the discovered column
     const seenClusterIds = new Set<string>();
-    for (const cluster of allClusters) {
+    for (const cluster of [...discoveredClusters, ...summarizedClusters]) {
       const cid = cluster._id.toString();
-      if (usedClusterIds.has(cid)) continue;
-      if (seenClusterIds.has(cid)) continue;
+      if (usedClusterIds.has(cid) || seenClusterIds.has(cid)) continue;
       seenClusterIds.add(cid);
-
       storyBoard["discovered"].push({
-        storyId: cid,
+        storyId: `discovered:${cid}`,
         title: cluster.leadTitle,
         stage: "discovered",
         roleId: undefined,

@@ -978,19 +978,25 @@ export function MissionControlPage() {
   const [eventTypeFilter, setEventTypeFilter] = useState<string>("all");
   const [eventSearch, setEventSearch] = useState<string>("");
 
-  // Filtered kanban
+  // Filtered kanban. Stage and role filters compose:
+  // - stage chip limits visible cards to one pipeline state
+  // - role dropdown limits cards to one specialist
   const filteredStoryBoard = useMemo(() => {
     if (!data) return {};
     const result: Record<string, MissionControlStory[]> = {};
     for (const [stage, stories] of Object.entries(data.storyBoard)) {
-      result[stage] = stories.filter((s) => {
-        if (kanbanRoleFilter !== "all" && s.roleId !== kanbanRoleFilter)
-          return false;
-        return true;
-      });
+      const stageMatches = kanbanStatusFilter === "all" || stage === kanbanStatusFilter;
+      result[stage] = stageMatches
+        ? stories.filter((s) => {
+            if (kanbanRoleFilter !== "all" && s.roleId !== kanbanRoleFilter) {
+              return false;
+            }
+            return true;
+          })
+        : [];
     }
     return result;
-  }, [data, kanbanRoleFilter]);
+  }, [data, kanbanStatusFilter, kanbanRoleFilter]);
 
   // Filtered events
   const filteredEvents = useMemo(() => {
