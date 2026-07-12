@@ -124,26 +124,80 @@ export interface HermesSession {
 }
 
 // ---------------------------------------------------------------------------
-// Default Hermes client — OpenAI-compatible (same pattern as hermes.ts)
+// LLM client — OpenAI Responses API by default, Hermes fallback
 // ---------------------------------------------------------------------------
 
-function getHermesConfig() {
+function getLLMConfig() {
+  const provider = process.env.LLM_PROVIDER || "openai";
+  if (provider === "openai") {
+    return {
+      provider: "openai" as const,
+      apiKey: process.env.OPENAI_API_KEY || "",
+      model: process.env.LLM_MODEL || "gpt-5.5",
+      timeoutMs: Number(process.env.LLM_TIMEOUT_MS || "120000"),
+    };
+  }
+  // Hermes (legacy)
   return {
+    provider: "hermes" as const,
     baseUrl: process.env.HERMES_BASE_URL || "http://localhost:8642/v1",
     apiKey: process.env.HERMES_API_KEY || "",
     model: process.env.HERMES_MODEL || "hermes-agent",
+    timeoutMs: Number(process.env.HERMES_TIMEOUT_MS || "120000"),
   };
 }
 
 export async function defaultHermesSession(
   params: Parameters<HermesSession>[0]
 ): ReturnType<HermesSession> {
-  const config = getHermesConfig();
-  const timeoutMs = params.timeoutMs ?? Number(process.env.HERMES_TIMEOUT_MS || "45000");
+  const config = getLLMConfig();
+  const timeoutMs = params.timeoutMs ?? config.timeoutMs;
+  const start = Date.now();
 
+  // ── OpenAI Responses API path ──
+  if (config.provider === "openai") {
+    try {
+      const { default: OpenAI } = await import("openai");
+      const openai = new OpenAI({ apiKey: config.apiKey, timeout: timeoutMs });
+
+      const textFormat = params.jsonMode
+        ? { format: { type: "json_object" as const } }
+        : { format: { type: "text" as const } };
+
+      const response = await openai.responses.create({
+        model: config.model,
+        input: [
+          { role: "system", content: params.systemPrompt },
+          { role: "user", content: params.userMessage },
+        ],
+        text: textFormat,
+      });
+
+      const latencyMs = Date.now() - start;
+      const rawContent = response.output_text;
+      const usage = response.usage
+        ? {
+            prompt_tokens: response.usage.input_tokens,
+            completion_tokens: response.usage.output_tokens,
+            total_tokens: response.usage.total_tokens,
+          }
+        : undefined;
+
+      return { rawContent, usage, latencyMs, ok: true, httpStatus: 200 };
+    } catch (err: any) {
+      return {
+        rawContent: "",
+        usage: undefined,
+        latencyMs: Date.now() - start,
+        ok: false,
+        httpStatus: err.status ?? 0,
+      };
+    }
+  }
+
+  // ── Hermes (Chat Completions) path ──
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.max(timeoutMs, 1000));
-  const start = Date.now();
 
   try {
     const body: Record<string, unknown> = {
@@ -181,7 +235,6 @@ export async function defaultHermesSession(
 
     const failed =
       !res.ok ||
-      json?.hermes?.failed === true ||
       json?.choices?.[0]?.finish_reason === "error";
 
     return { rawContent, usage, latencyMs, ok: !failed, httpStatus: res.status };

@@ -141,17 +141,29 @@ export function buildUserMessage(bundle: StoryBundle): string {
 }
 
 // ---------------------------------------------------------------------------
-// Main Hermes call
+// LLM call — OpenAI by default, Hermes fallback via LLM_PROVIDER env
 // ---------------------------------------------------------------------------
 
 export async function callHermes(
   bundle: StoryBundle
 ): Promise<HermesCallResult> {
+  const provider = process.env.LLM_PROVIDER || "openai";
   const baseUrl =
-    process.env.HERMES_BASE_URL || "http://localhost:8642/v1";
-  const apiKey = process.env.HERMES_API_KEY || "";
-  const model = process.env.HERMES_MODEL || "hermes-agent";
-  const timeoutMs = Number(process.env.HERMES_TIMEOUT_MS || "45000");
+    provider === "openai"
+      ? "https://api.openai.com/v1"
+      : process.env.HERMES_BASE_URL || "http://localhost:8642/v1";
+  const apiKey =
+    provider === "openai"
+      ? process.env.OPENAI_API_KEY || ""
+      : process.env.HERMES_API_KEY || "";
+  const model =
+    provider === "openai"
+      ? process.env.LLM_MODEL || "gpt-5.5"
+      : process.env.HERMES_MODEL || "hermes-agent";
+  const useMaxCompletionTokens = provider === "openai";
+  const timeoutMs = Number(
+    process.env.LLM_TIMEOUT_MS || process.env.HERMES_TIMEOUT_MS || "120000"
+  );
 
   const userMessage = buildUserMessage(bundle);
 
@@ -172,8 +184,9 @@ export async function callHermes(
       },
       body: JSON.stringify({
         model,
-        temperature: 0.2,
-        max_tokens: 450,
+        ...(useMaxCompletionTokens
+          ? { max_completion_tokens: 450 }
+          : { temperature: 0.2, max_tokens: 450 }),
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
