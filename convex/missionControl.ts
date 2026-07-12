@@ -674,6 +674,14 @@ export const getMissionControl = query({
 
     const isEditionDone =
       edition?.status === "published" || edition?.status === "archived";
+    const hasPublishedStories = isEditionDone && editionStoryMap.size > 0;
+
+    const roleIdFromStoryKey = (storyKey: string) => {
+      const prefix = `${editionKey}-`;
+      if (!storyKey.startsWith(prefix)) return undefined;
+      const withoutEdition = storyKey.slice(prefix.length);
+      return withoutEdition.replace(/-\d+$/, "") || undefined;
+    };
 
     const normalizeTitle = (value: string | undefined) =>
       (value ?? "")
@@ -733,6 +741,7 @@ export const getMissionControl = query({
     // ── Planned: role specs / assignments ─────────────────────
     for (const spec of roleSpecs) {
       if (
+        hasPublishedStories ||
         rolesWithDrafts.has(spec.roleId) ||
         rolesWithClaims.has(spec.roleId) ||
         rolesWithVoice.has(spec.roleId) ||
@@ -759,6 +768,7 @@ export const getMissionControl = query({
 
     // ── Reporting: agent session traces ───────────────────────
     for (const tn of traceNodes.filter((t: any) => t.kind === "agent_session" && t.roleId)) {
+      if (hasPublishedStories) continue;
       if (
         tn.status !== "running" &&
         (rolesWithDrafts.has(tn.roleId!) ||
@@ -784,6 +794,7 @@ export const getMissionControl = query({
     // If no traces exist yet, show role specs that are not drafted as pending reporting.
     for (const spec of roleSpecs) {
       if (
+        hasPublishedStories ||
         rolesWithDrafts.has(spec.roleId) ||
         rolesWithClaims.has(spec.roleId) ||
         rolesWithVoice.has(spec.roleId) ||
@@ -806,6 +817,7 @@ export const getMissionControl = query({
     // ── Drafting: worker results / generated drafts ───────────
     for (const wr of workerResults) {
       if (
+        hasPublishedStories ||
         publishedResultIds.has(wr.resultId) ||
         publishedRoleIds.has(wr.roleId) ||
         rolesWithClaims.has(wr.roleId) ||
@@ -828,7 +840,11 @@ export const getMissionControl = query({
 
     // ── Fact Check: claims + verdicts ─────────────────────────
     for (const claim of claims) {
-      if (publishedRoleIds.has(claim.roleId) || rolesWithVoice.has(claim.roleId)) {
+      if (
+        hasPublishedStories ||
+        publishedRoleIds.has(claim.roleId) ||
+        rolesWithVoice.has(claim.roleId)
+      ) {
         continue;
       }
       const verdict = verdictByClaimId.get(claim.claimId);
@@ -847,7 +863,7 @@ export const getMissionControl = query({
 
     // Verdicts without a claim (legacy/best-effort writes) still surface.
     for (const verdict of verdicts) {
-      if (claimById.has(verdict.claimId)) continue;
+      if (hasPublishedStories || claimById.has(verdict.claimId)) continue;
       storyBoard["fact_check"].push({
         storyId: `fact-verdict:${verdict.claimId}`,
         title: `${verdict.verdict}: ${verdict.reason}`,
@@ -862,6 +878,7 @@ export const getMissionControl = query({
 
     // ── Voice: audio render artifacts ─────────────────────────
     for (const segment of audioSegments) {
+      if (hasPublishedStories) continue;
       const wr = workerResults[segment.turnIndex];
       if (wr && publishedRoleIds.has(wr.roleId)) continue;
       const spec = wr ? roleSpecByRoleId.get(wr.roleId) : undefined;
@@ -881,13 +898,15 @@ export const getMissionControl = query({
     for (const [storyKey, es] of editionStoryMap) {
       const stage = isEditionDone ? "done" : "publish";
       const wr = publishedWorkerByStoryKey.get(storyKey);
-      const spec = wr ? roleSpecByRoleId.get(wr.roleId) : undefined;
+      const fallbackRoleId = roleIdFromStoryKey(storyKey);
+      const roleId = wr?.roleId ?? fallbackRoleId;
+      const spec = roleId ? roleSpecByRoleId.get(roleId) : undefined;
       storyBoard[stage].push({
         storyId: `${stage}:${storyKey}`,
         title: es.title,
         stage,
-        roleId: wr?.roleId,
-        roleName: spec?.name ?? wr?.roleId ?? es.canonicalPublisherName ?? undefined,
+        roleId,
+        roleName: spec?.name ?? wr?.roleId ?? fallbackRoleId ?? es.canonicalPublisherName ?? undefined,
         beat: wr?.beat,
         confidence: wr?.confidence,
         clusterId: es.clusterId?.toString() ?? spec?.assignedClusterIds?.[0],
