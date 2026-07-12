@@ -209,4 +209,165 @@ export default defineSchema({
   })
     .index("by_editionId", ["editionId"])
     .index("by_editionKey_receiptType", ["editionKey", "receiptType"]),
+
+  // ── Newsroom organisation (ONR-004) ────────────────────────────
+
+  editorialPlans: defineTable({
+    planId: v.string(),
+    editionKey: v.string(),
+    editorialDirection: v.string(),
+    sectionNames: v.array(v.string()),
+    sectionDescriptions: v.array(v.string()),
+    roleIds: v.array(v.string()),
+    dormantBeats: v.array(v.string()),
+    dormantRationale: v.string(),
+    totalTokenBudget: v.number(),
+    concurrencyLimit: v.number(),
+    inputDigest: v.string(),
+    rawHermesResponse: v.string(),
+    costCents: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_editionKey", ["editionKey"])
+    .index("by_createdAt", ["createdAt"]),
+
+  roleSpecs: defineTable({
+    planId: v.string(),
+    editionKey: v.string(),
+    roleId: v.string(),
+    name: v.string(),
+    rationale: v.string(),
+    assignedClusterIds: v.array(v.string()),
+    mission: v.string(),
+    allowedTools: v.array(v.string()),
+    guardrails: v.array(v.string()),
+    successCriteria: v.array(v.string()),
+    parentTrace: v.string(),
+    tokenBudget: v.number(),
+    timeBudgetMs: v.number(),
+    wasNamed: v.boolean(),
+    rawHermesResponse: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_planId", ["planId"])
+    .index("by_editionKey_roleId", ["editionKey", "roleId"]),
+
+  workerResults: defineTable({
+    editionKey: v.string(),
+    resultId: v.string(),
+    roleId: v.string(),
+    title: v.string(),
+    summary: v.string(),
+    summaryBullets: v.array(v.string()),
+    beat: v.string(),
+    confidence: v.number(),
+    sourceUrls: v.array(v.string()),
+    sourceNames: v.array(v.string()),
+    meetsCriteria: v.boolean(),
+    selfAssessmentReasoning: v.string(),
+    validationStatus: v.union(
+      v.literal("valid"),
+      v.literal("invalid"),
+      v.literal("repaired")
+    ),
+    validationErrors: v.array(v.string()),
+    repairAttempted: v.boolean(),
+    repairDetail: v.optional(v.string()),
+    rawResponse: v.string(),
+    tokensUsed: v.number(),
+    estimatedCostCents: v.number(),
+    latencyMs: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_editionKey_roleId", ["editionKey", "roleId"])
+    .index("by_validationStatus", ["validationStatus"]),
+
+  revisionLoops: defineTable({
+    loopId: v.string(),
+    editionKey: v.string(),
+    roleId: v.string(),
+    originalResultId: v.string(),
+    revisedResultId: v.optional(v.string()),
+    concerns: v.array(v.string()),
+    suggestions: v.array(v.string()),
+    severity: v.union(v.literal("required"), v.literal("optional")),
+    disposition: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("rejected")
+    ),
+    round: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_editionKey", ["editionKey"])
+    .index("by_disposition", ["disposition"]),
+
+  newsroomMemory: defineTable({
+    memoryId: v.string(),
+    kind: v.union(
+      v.literal("lesson"),
+      v.literal("role_pattern"),
+      v.literal("editorial_rule"),
+      v.literal("guardrail")
+    ),
+    content: v.string(),
+    tags: v.array(v.string()),
+    provenance: v.string(),
+    confidence: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_kind_createdAt", ["kind", "createdAt"])
+    .index("by_createdAt", ["createdAt"])
+    .index("by_provenance", ["provenance"]),
+
+  // ── Evaluation (editorial + judge) ─────────────────────────────
+
+  evalCases: defineTable({
+    evalId: v.string(),
+    category: v.union(
+      v.literal("role-graph"),
+      v.literal("novelty"),
+      v.literal("dormancy"),
+      v.literal("revision-loop"),
+      v.literal("schema-validation"),
+      v.literal("concurrency"),
+      v.literal("budget"),
+      v.literal("edge-case"),
+      v.literal("assembly"),
+      // judge categories (shared table for ONR-005 too)
+      v.literal("unsupported"),
+      v.literal("contradicted"),
+      v.literal("stale"),
+      v.literal("duplicate"),
+      v.literal("supported"),
+      v.literal("conflicting-sources"),
+      v.literal("correction")
+    ),
+    description: v.string(),
+    inputDigest: v.string(),
+    expectedBehavior: v.string(),
+    promptVersionAtCapture: v.string(),
+    source: v.union(v.literal("seeded"), v.literal("captured")),
+    provenanceEdition: v.optional(v.string()),
+    provenanceRoleId: v.optional(v.string()),
+    notes: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_category", ["category"])
+    .index("by_source", ["source"])
+    .index("by_provenanceEdition", ["provenanceEdition"]),
+
+  evalRuns: defineTable({
+    runId: v.string(),
+    evalSet: v.string(),
+    total: v.number(),
+    passed: v.number(),
+    failed: v.number(),
+    passRate: v.number(),
+    byCategoryJson: v.string(),
+    promptVersion: v.string(),
+    source: v.union(v.literal("manual"), v.literal("ci"), v.literal("pre-commit")),
+    createdAt: v.number(),
+  })
+    .index("by_evalSet_createdAt", ["evalSet", "createdAt"]),
 });

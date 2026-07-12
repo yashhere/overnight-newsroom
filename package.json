@@ -19,7 +19,8 @@
     "web:preview": "cd apps/public-site && npm run preview",
     "web:test": "cd apps/public-site && npm run test",
     "web:lint": "cd apps/public-site && npm run lint",
-    "test": "npm run web:test"
+    "test": "npm run svc:test && npm run web:test",
+    "evals:editorial": "npx tsx services/evals/editorial.eval.ts"
   },
   "dependencies": {
     "convex": "^1.42.1"
