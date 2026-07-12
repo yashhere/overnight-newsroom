@@ -174,7 +174,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_editionKey", ["editionKey"])
-    .index("by_status_publishedAt", ["status", "publishedAt"]),
+    .index("by_status_publishedAt", ["status", "publishedAt"])
+    .index("by_createdAt", ["createdAt"]),
 
   editionStories: defineTable({
     editionId: v.id("editions"),
@@ -370,6 +371,44 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_evalSet_createdAt", ["evalSet", "createdAt"]),
+
+  // ── Mission Control traces (ONR-011) ───────────────────────────
+
+  traceNodes: defineTable({
+    editionKey: v.string(),
+    nodeId: v.string(),
+    parentNodeId: v.optional(v.string()),
+    roleId: v.optional(v.string()),
+    roleName: v.optional(v.string()),
+    beat: v.optional(v.string()),
+    assignment: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("rejected"),
+      v.literal("revised")
+    ),
+    kind: v.union(
+      v.literal("agent_session"),
+      v.literal("tool_step"),
+      v.literal("manager_decision"),
+      v.literal("judge_block")
+    ),
+    tokensUsed: v.optional(v.number()),
+    estimatedCostCents: v.optional(v.number()),
+    latencyMs: v.optional(v.number()),
+    inputSummary: v.optional(v.string()),
+    outputSummary: v.optional(v.string()),
+    evidence: v.optional(v.string()),
+    artifacts: v.optional(v.array(v.string())),
+    errorMessage: v.optional(v.string()),
+    startedAt: v.number(),
+    finishedAt: v.optional(v.number()),
+  })
+    .index("by_editionKey_nodeId", ["editionKey", "nodeId"])
+    .index("by_editionKey_startedAt", ["editionKey", "startedAt"]),
 
   // ── Judge (ONR-005) ───────────────────────────────────────────
 
