@@ -1230,7 +1230,7 @@ export const getRoleTrace = query({
       return false;
     });
 
-    return roleTraces.map((tn) => ({
+    const mappedTraces = roleTraces.map((tn) => ({
       nodeId: tn.nodeId,
       parentNodeId: tn.parentNodeId,
       roleId: tn.roleId,
@@ -1250,6 +1250,141 @@ export const getRoleTrace = query({
       finishedAt: tn.finishedAt,
       latencyMs: traceLatencyMs(tn),
     }));
+
+    if (mappedTraces.length > 0) return mappedTraces;
+
+    // Older/current pipelines sometimes persist roleSpecs + workerResults but
+    // don't emit traceNodes. Synthesize a read-only trace from durable artifacts
+    // so completed Done cards still have auditable detail instead of an empty
+    // drawer.
+    const roleSpec = await ctx.db
+      .query("roleSpecs")
+      .withIndex("by_editionKey_roleId", (q) =>
+        q.eq("editionKey", args.editionKey).eq("roleId", args.roleId),
+      )
+      .first();
+
+    const workerResult = await ctx.db
+      .query("workerResults")
+      .withIndex("by_editionKey_roleId", (q) =>
+        q.eq("editionKey", args.editionKey).eq("roleId", args.roleId),
+      )
+      .first();
+
+    const editions = await ctx.db
+      .query("editions")
+      .withIndex("by_editionKey", (q) => q.eq("editionKey", args.editionKey))
+      .take(1);
+
+    let publishedStory: any = null;
+    if (editions.length > 0) {
+      const stories = await ctx.db
+        .query("editionStories")
+        .withIndex("by_editionId_sortOrder", (q) => q.eq("editionId", editions[0]._id))
+        .collect();
+      publishedStory = stories.find((story: any) =>
+        story.storyKey.includes(args.roleId) || story.title === workerResult?.title,
+      );
+    }
+
+    const claims = await ctx.db
+      .query("claims")
+      .withIndex("by_editionKey", (q: any) => q.eq("editionKey", args.editionKey))
+      .collect();
+    const roleClaims = claims.filter((claim: any) => claim.roleId === args.roleId);
+
+    const verdicts = await ctx.db
+      .query("verdicts")
+      .withIndex("by_editionKey", (q: any) => q.eq("editionKey", args.editionKey))
+      .collect();
+    const verdictByClaimId = new Map(verdicts.map((verdict: any) => [verdict.claimId, verdict]));
+
+    if (!roleSpec && !workerResult && !publishedStory && roleClaims.length === 0) {
+      return [];
+    }
+
+    const startedAt = roleSpec?.createdAt ?? workerResult?.createdAt ?? publishedStory?.createdAt ?? Date.now();
+    const finishedAt = workerResult?.createdAt ?? publishedStory?.createdAt;
+    const evidence = workerResult?.sourceUrls?.find(Boolean) ?? publishedStory?.sourceUrl ?? publishedStory?.canonicalPublisherUrl;
+    const syntheticRootId = `${args.editionKey}:${args.roleId}:artifact-trace`;
+    const synthetic: Array<{
+      nodeId: string;
+      parentNodeId?: string;
+      roleId?: string;
+      roleName?: string;
+      beat?: string;
+      assignment?: string;
+      status: "pending" | "running" | "completed" | "failed" | "rejected" | "revised";
+      kind: "agent_session" | "tool_step" | "manager_decision" | "judge_block";
+      tokensUsed?: number;
+      estimatedCostCents?: number;
+      latencyMs?: number;
+      inputSummary?: string;
+      outputSummary?: string;
+      evidence?: string;
+      artifacts?: string[];
+      errorMessage?: string;
+      startedAt: number;
+      finishedAt?: number;
+    }> = [
+      {
+        nodeId: syntheticRootId,
+        roleId: args.roleId,
+        roleName: roleSpec?.name ?? args.roleId,
+        beat: workerResult?.beat,
+        assignment: workerResult?.title ?? roleSpec?.mission ?? publishedStory?.title ?? args.roleId,
+        status: workerResult?.validationStatus === "invalid" ? "failed" : workerResult || publishedStory ? "completed" : "pending",
+        kind: "agent_session",
+        tokensUsed: workerResult?.tokensUsed,
+        estimatedCostCents: workerResult?.estimatedCostCents,
+        latencyMs: workerResult?.latencyMs && workerResult.latencyMs > 0 ? workerResult.latencyMs : undefined,
+        inputSummary: roleSpec
+          ? `${roleSpec.assignedClusterIds.length} assigned cluster(s); budget ${roleSpec.tokenBudget} tokens / ${roleSpec.timeBudgetMs}ms`
+          : undefined,
+        outputSummary: workerResult?.summary ?? publishedStory?.summary,
+        evidence,
+        artifacts: [
+          ...(workerResult?.sourceUrls ?? []),
+          publishedStory?.sourceUrl,
+          publishedStory?.canonicalPublisherUrl,
+          publishedStory?.receiptUrl,
+        ].filter(Boolean),
+        errorMessage: workerResult?.validationStatus === "invalid"
+          ? workerResult.validationErrors.join("; ")
+          : undefined,
+        startedAt,
+        finishedAt,
+      },
+    ];
+
+    for (const claim of roleClaims) {
+      const verdict = verdictByClaimId.get(claim.claimId) as any;
+      synthetic.push({
+        nodeId: `${args.editionKey}:${args.roleId}:claim:${claim.claimId}`,
+        parentNodeId: syntheticRootId,
+        roleId: args.roleId,
+        roleName: roleSpec?.name ?? args.roleId,
+        assignment: claim.claim,
+        status:
+          verdict?.verdict === "block"
+            ? "failed"
+            : verdict?.verdict === "revise"
+              ? "revised"
+              : verdict
+                ? "completed"
+                : "pending",
+        kind: verdict?.verdict === "block" ? "judge_block" : "tool_step",
+        tokensUsed: verdict?.tokensUsed,
+        estimatedCostCents: verdict?.estimatedCostCents,
+        latencyMs: verdict?.latencyMs,
+        outputSummary: verdict?.reason,
+        evidence: verdict?.evidenceJson,
+        startedAt: claim.createdAt,
+        finishedAt: verdict?.createdAt,
+      });
+    }
+
+    return synthetic;
   },
 });
 

@@ -145,7 +145,7 @@ function evidenceLabel(evidence: string): string {
       return href;
     }
   }
-  return evidence.length > 80 ? `${evidence.slice(0, 77)}…` : evidence;
+  return evidence;
 }
 
 function EvidenceLink({
@@ -158,14 +158,16 @@ function EvidenceLink({
   const href = evidenceHref(evidence);
   const content = (
     <>
-      <ExternalLink className="h-2.5 w-2.5 flex-shrink-0" />
-      <span className="truncate">Evidence: {evidenceLabel(evidence)}</span>
+      <ExternalLink className="mt-0.5 h-2.5 w-2.5 flex-shrink-0" />
+      <span className="min-w-0 whitespace-normal break-words [overflow-wrap:anywhere]">
+        Evidence: {evidenceLabel(evidence)}
+      </span>
     </>
   );
 
   if (!href) {
     return (
-      <span className={`flex min-w-0 items-center gap-1 ${className}`} title={evidence}>
+      <span className={`flex min-w-0 items-start gap-1 ${className}`} title={evidence}>
         {content}
       </span>
     );
@@ -176,7 +178,7 @@ function EvidenceLink({
       href={href}
       target="_blank"
       rel="noreferrer"
-      className={`flex min-w-0 items-center gap-1 underline-offset-2 hover:underline ${className}`}
+      className={`flex min-w-0 items-start gap-1 underline-offset-2 hover:underline ${className}`}
       title={href}
       onClick={(event) => event.stopPropagation()}
     >
