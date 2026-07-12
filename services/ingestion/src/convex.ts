@@ -158,6 +158,33 @@ export async function saveEnrichment(args: {
   });
 }
 
+export async function markDuplicate(args: {
+  clusterId: string;
+  callId: string;
+  runId?: string;
+  duplicateOf?: string;
+  duplicateReason: string;
+  hermesCallStartedAt: number;
+  hermesCallFinishedAt: number;
+  hermesCallLatencyMs: number;
+  hermesCallHttpStatus?: number;
+  hermesCallModel: string;
+  hermesCallPromptVersion: string;
+  hermesCallBaseUrlHost: string;
+  hermesCallInputTokens?: number;
+  hermesCallOutputTokens?: number;
+  hermesCallTotalTokens?: number;
+  hermesCallUsageSource: "provider" | "estimated" | "none";
+  hermesCallEstimatedCostCents?: number;
+  hermesCallRequestSummary: string;
+  hermesCallResponseSummary: string;
+}) {
+  return callMutation("enrichment:markDuplicate", {
+    secret: secret(),
+    ...args,
+  });
+}
+
 export async function markThin(args: {
   clusterId: string;
   callId: string;

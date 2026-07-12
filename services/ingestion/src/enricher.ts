@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import {
   claimPending,
   saveEnrichment,
+  markDuplicate,
   markThin,
   logIngestionEvent,
 } from "./convex.js";
@@ -200,8 +201,47 @@ async function main() {
           createdAt: Date.now(),
         });
 
-        // Determine if we should accept or mark thin based on confidence
-        if (resp.confidence >= 0.3) {
+        // Hermes checks its memory first. If it recognizes a duplicate, skip
+        // enrichment and suppress the cluster so it is not claimed again.
+        if (resp.duplicate) {
+          const duplicateReason =
+            resp.duplicateReason ||
+            `Hermes memory matched a previously processed story${resp.duplicateOf ? `: ${resp.duplicateOf}` : ""}`;
+          try {
+            await markDuplicate({
+              clusterId: cluster._id,
+              callId,
+              duplicateOf: resp.duplicateOf || undefined,
+              duplicateReason,
+              hermesCallStartedAt,
+              hermesCallFinishedAt,
+              hermesCallLatencyMs: latencyMs,
+              hermesCallHttpStatus: result.httpStatus ?? 200,
+              hermesCallModel: model,
+              hermesCallPromptVersion: promptVersion,
+              hermesCallBaseUrlHost: baseUrlHost,
+              hermesCallInputTokens: cost.inputTokens,
+              hermesCallOutputTokens: cost.outputTokens,
+              hermesCallTotalTokens: cost.totalTokens,
+              hermesCallUsageSource: cost.usageSource,
+              hermesCallEstimatedCostCents: cost.estimatedCostCents,
+              hermesCallRequestSummary: requestSummary,
+              hermesCallResponseSummary: JSON.stringify({
+                duplicate: true,
+                duplicateOf: resp.duplicateOf,
+                duplicateReason,
+              }).slice(0, 500),
+            });
+
+            console.log(
+              `[enricher] Skipped ${cluster._id} — duplicate found in Hermes memory${resp.duplicateOf ? ` (${resp.duplicateOf.slice(0, 80)})` : ""}`
+            );
+          } catch (err: any) {
+            console.error(
+              `[enricher] Failed to mark duplicate for ${cluster._id}: ${err?.message || err}`
+            );
+          }
+        } else if (resp.confidence >= 0.3) {
           // Extract best source for canonical URL
           let canonicalPublisherUrl: string | undefined;
           let extractionConfidence: number | undefined;

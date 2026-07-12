@@ -482,6 +482,26 @@ describe("HermesResponseSchema", () => {
     const parsed = HermesResponseSchema.parse(valid);
     expect(parsed.sources[0].contentKind).toBe("search_result");
   });
+
+  it("accepts duplicate responses from Hermes memory checks", () => {
+    const duplicate = {
+      duplicate: true,
+      duplicateOf: "https://example.com/previous-story",
+      duplicateReason: "Same canonical URL and headline found in memory",
+      summaryBullets: [],
+      confidence: 1,
+      sources: [
+        {
+          sourceName: "Should be ignored for duplicate",
+          url: "https://example.com/current-story",
+        },
+      ],
+    };
+    const parsed = HermesResponseSchema.parse(duplicate);
+    expect(parsed.duplicate).toBe(true);
+    expect(parsed.duplicateOf).toContain("previous-story");
+    expect(parsed.sources).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -504,16 +524,16 @@ describe("estimateTokens", () => {
 });
 
 describe("computeCostCents", () => {
-  it("computes cost in integer cents", () => {
+  it("computes fractional cents for observability", () => {
     const cents = computeCostCents(1000, 500, 15, 60);
-    // (1000/1M)*15 + (500/1M)*60 = 0.015 + 0.03 = 0.045 USD = 5 cents
-    expect(cents).toBe(5);
+    // (1000/1M)*15 + (500/1M)*60 = 0.045 USD = 4.5 cents
+    expect(cents).toBe(4.5);
   });
 
-  it("rounds to nearest cent", () => {
+  it("preserves sub-cent costs", () => {
     const cents = computeCostCents(100, 100, 15, 60);
-    // (100/1M)*15 + (100/1M)*60 = 0.0015 + 0.006 = 0.0075 USD = 1 cent
-    expect(cents).toBe(1);
+    // (100/1M)*15 + (100/1M)*60 = 0.0075 USD = 0.75 cents
+    expect(cents).toBe(0.75);
   });
 
   it("returns 0 for zero tokens", () => {

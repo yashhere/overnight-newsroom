@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import type { KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -60,15 +61,20 @@ function formatTime(ts: number | undefined): string {
 }
 
 function formatElapsed(ms: number | undefined): string {
-  if (!ms) return "—";
-  if (ms < 1_000) return `${ms}ms`;
+  if (ms === undefined || Number.isNaN(ms)) return "—";
+  if (ms <= 0) return "0ms";
+  if (ms < 1_000) return `${Math.round(ms)}ms`;
   if (ms < 60_000) return `${(ms / 1_000).toFixed(1)}s`;
   return `${(ms / 60_000).toFixed(1)}m`;
 }
 
 function formatCents(cents: number | undefined): string {
-  if (!cents) return "$0.00";
-  return `$${(cents / 100).toFixed(3)}`;
+  if (cents === undefined || Number.isNaN(cents)) return "—";
+  if (cents === 0) return "0¢";
+  const abs = Math.abs(cents);
+  if (abs < 1) return `${cents.toFixed(4)}¢`;
+  if (abs < 100) return `${cents.toFixed(abs < 10 ? 3 : 2)}¢`;
+  return `$${(cents / 100).toFixed(2)}`;
 }
 
 function statusColor(status: string): string {
@@ -90,6 +96,93 @@ function statusColor(status: string): string {
     default:
       return "bg-gray-100 text-gray-600 border-gray-300";
   }
+}
+
+function findUrl(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const direct = value.trim();
+    if (/^https?:\/\//i.test(direct)) return direct;
+    return direct.match(/https?:\/\/[^\s"'<>)}\]]+/i)?.[0];
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const match = findUrl(item);
+      if (match) return match;
+    }
+  }
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    for (const key of ["url", "href", "evidenceUrl", "sourceUrl", "canonicalUrl"]) {
+      const match = findUrl(record[key]);
+      if (match) return match;
+    }
+    for (const item of Object.values(record)) {
+      const match = findUrl(item);
+      if (match) return match;
+    }
+  }
+
+  return undefined;
+}
+
+function evidenceHref(evidence: string | undefined): string | undefined {
+  if (!evidence) return undefined;
+  try {
+    return findUrl(JSON.parse(evidence));
+  } catch {
+    return findUrl(evidence);
+  }
+}
+
+function evidenceLabel(evidence: string): string {
+  const href = evidenceHref(evidence);
+  if (href) {
+    try {
+      return new URL(href).hostname.replace(/^www\./, "");
+    } catch {
+      return href;
+    }
+  }
+  return evidence.length > 80 ? `${evidence.slice(0, 77)}…` : evidence;
+}
+
+function EvidenceLink({
+  evidence,
+  className = "",
+}: {
+  evidence: string;
+  className?: string;
+}) {
+  const href = evidenceHref(evidence);
+  const content = (
+    <>
+      <ExternalLink className="h-2.5 w-2.5 flex-shrink-0" />
+      <span className="truncate">Evidence: {evidenceLabel(evidence)}</span>
+    </>
+  );
+
+  if (!href) {
+    return (
+      <span className={`flex min-w-0 items-center gap-1 ${className}`} title={evidence}>
+        {content}
+      </span>
+    );
+  }
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className={`flex min-w-0 items-center gap-1 underline-offset-2 hover:underline ${className}`}
+      title={href}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {content}
+    </a>
+  );
 }
 
 function eventIcon(type: string) {
@@ -300,20 +393,30 @@ function AgentRow({
               {agent.assignment}
             </div>
           )}
-          <div className="mt-1 flex items-center gap-2">
+          <div className="mt-1 flex flex-wrap items-center gap-2">
             <Badge
               variant="outline"
               className={`text-[10px] px-1.5 py-0 ${statusColor(agent.status)}`}
             >
               {agent.status}
             </Badge>
-            {agent.latencyMs && (
+            <span className="text-[10px] text-muted-foreground">
+              <Layers className="mr-0.5 inline h-2.5 w-2.5" />
+              {agent.traceNodeCount} trace
+            </span>
+            {agent.totalTokens !== undefined && agent.totalTokens > 0 && (
+              <span className="text-[10px] text-muted-foreground">
+                <Zap className="mr-0.5 inline h-2.5 w-2.5" />
+                {agent.totalTokens.toLocaleString()} tok
+              </span>
+            )}
+            {agent.latencyMs !== undefined && (
               <span className="text-[10px] text-muted-foreground">
                 <Clock className="mr-0.5 inline h-2.5 w-2.5" />
                 {formatElapsed(agent.latencyMs)}
               </span>
             )}
-            {agent.totalCostCents !== undefined && agent.totalCostCents > 0 && (
+            {agent.totalCostCents !== undefined && (
               <span className="text-[10px] text-muted-foreground">
                 {formatCents(agent.totalCostCents)}
               </span>
@@ -564,14 +667,24 @@ function EventRow({
   event: MissionControlEvent;
   onClick: () => void;
 }) {
-  const isClickable = event.roleId || event.evidence;
+  const isClickable = Boolean(event.roleId || event.evidence);
+
+  const handleKeyDown = (keyboardEvent: KeyboardEvent<HTMLDivElement>) => {
+    if (!isClickable) return;
+    if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
+      keyboardEvent.preventDefault();
+      onClick();
+    }
+  };
 
   return (
-    <button
-      onClick={onClick}
-      disabled={!isClickable}
-      className={`flex w-full items-start gap-2 border-b px-3 py-1.5 text-left transition-colors hover:bg-accent/50 ${
-        !isClickable ? "cursor-default" : ""
+    <div
+      role={isClickable ? "button" : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+      onClick={isClickable ? onClick : undefined}
+      onKeyDown={handleKeyDown}
+      className={`flex w-full items-start gap-2 border-b px-3 py-1.5 text-left transition-colors ${
+        isClickable ? "cursor-pointer hover:bg-accent/50" : "cursor-default"
       }`}
     >
       <span className="mt-0.5 flex-shrink-0">{eventIcon(event.type)}</span>
@@ -582,10 +695,17 @@ function EventRow({
           {event.roleName && (
             <span className="truncate">{event.roleName}</span>
           )}
+          {event.tokensUsed !== undefined && event.tokensUsed > 0 && (
+            <span>{event.tokensUsed.toLocaleString()} tok</span>
+          )}
+          {event.estimatedCostCents !== undefined && (
+            <span>{formatCents(event.estimatedCostCents)}</span>
+          )}
+          {event.latencyMs !== undefined && (
+            <span>{formatElapsed(event.latencyMs)}</span>
+          )}
           {event.evidence && (
-            <span className="flex items-center gap-0.5 text-blue-500">
-              <ExternalLink className="h-2.5 w-2.5" /> evidence
-            </span>
+            <EvidenceLink evidence={event.evidence} className="text-blue-500" />
           )}
         </div>
       </div>
@@ -595,7 +715,7 @@ function EventRow({
       {event.severity === "warning" && (
         <Shield className="mt-0.5 h-3 w-3 flex-shrink-0 text-yellow-400" />
       )}
-    </button>
+    </div>
   );
 }
 
@@ -652,15 +772,20 @@ function DetailDrawer({
 }) {
   const trace = useRoleTrace(editionKey, selectedRoleId);
 
-  // Find the root trace node (no parent)
-  const rootNode = trace?.find((tn) => !tn.parentNodeId);
-  const childNodes = trace?.filter((tn) => tn.parentNodeId) ?? [];
+  // Prefer the selected role's agent session as the root. Worker traces often
+  // point back to the editor-in-chief, so they can have a parentNodeId while
+  // still being the root of the role detail drawer.
+  const rootNode = trace?.find(
+    (tn) => tn.roleId === selectedRoleId && tn.kind === "agent_session",
+  ) ?? trace?.find((tn) => !tn.parentNodeId) ?? trace?.[0];
 
   // Build parent-child groups
   const traceGroups = useMemo(() => {
     if (!trace) return [];
-    const root = trace.find((tn) => !tn.parentNodeId);
-    if (!root) return trace.map((tn) => ({ parent: tn, children: [] as RoleTraceNode[] }));
+    const root = trace.find(
+      (tn) => tn.roleId === selectedRoleId && tn.kind === "agent_session",
+    ) ?? trace.find((tn) => !tn.parentNodeId) ?? trace[0];
+    if (!root) return [];
 
     const groups: Array<{ parent: RoleTraceNode; children: RoleTraceNode[] }> = [];
     const remaining = trace.filter((tn) => tn.nodeId !== root.nodeId);
@@ -689,7 +814,7 @@ function DetailDrawer({
     }
 
     return groups;
-  }, [trace]);
+  }, [trace, selectedRoleId]);
 
   if (!trace && trace !== undefined) {
     return (
@@ -787,13 +912,13 @@ function DetailDrawer({
                     {parent.assignment ?? parent.roleName ?? parent.nodeId}
                   </p>
                   <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] text-muted-foreground">
-                    {parent.tokensUsed && (
+                    {parent.tokensUsed !== undefined && parent.tokensUsed > 0 && (
                       <span>{parent.tokensUsed.toLocaleString()} tok</span>
                     )}
-                    {parent.estimatedCostCents && (
+                    {parent.estimatedCostCents !== undefined && (
                       <span>{formatCents(parent.estimatedCostCents)}</span>
                     )}
-                    {parent.latencyMs && (
+                    {parent.latencyMs !== undefined && (
                       <span>{formatElapsed(parent.latencyMs)}</span>
                     )}
                   </div>
@@ -820,9 +945,8 @@ function DetailDrawer({
                 </div>
               )}
               {parent.evidence && (
-                <div className="ml-4 mt-1 flex items-center gap-1 text-[10px] text-blue-500">
-                  <ExternalLink className="h-2.5 w-2.5" />
-                  <span>Evidence: {parent.evidence}</span>
+                <div className="ml-4 mt-1 text-[10px] text-blue-500">
+                  <EvidenceLink evidence={parent.evidence} />
                 </div>
               )}
               {parent.errorMessage && (
@@ -849,17 +973,30 @@ function DetailDrawer({
                         <span className="font-medium">
                           {child.assignment ?? "step"}
                         </span>
-                        {child.tokensUsed && (
+                        {child.tokensUsed !== undefined && child.tokensUsed > 0 && (
                           <span className="text-muted-foreground">
                             {child.tokensUsed.toLocaleString()} tok
                           </span>
                         )}
-                        {child.estimatedCostCents && (
+                        {child.estimatedCostCents !== undefined && (
                           <span className="text-muted-foreground">
                             {formatCents(child.estimatedCostCents)}
                           </span>
                         )}
+                        {child.latencyMs !== undefined && (
+                          <span className="text-muted-foreground">
+                            {formatElapsed(child.latencyMs)}
+                          </span>
+                        )}
                       </div>
+                      {child.outputSummary && (
+                        <div className="mt-1 text-muted-foreground">
+                          {child.outputSummary}
+                        </div>
+                      )}
+                      {child.evidence && (
+                        <EvidenceLink evidence={child.evidence} className="mt-1 text-blue-500" />
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1046,7 +1183,7 @@ export function MissionControlPage() {
     setDrawerEvent(null);
   };
 
-  const drawerOpen = drawerRoleId !== null;
+  const drawerOpen = drawerRoleId !== null || drawerStory !== null || drawerEvent !== null;
 
   // Loading state
   if (data === undefined) {
@@ -1343,11 +1480,20 @@ export function MissionControlPage() {
                     {drawerEvent.roleName && (
                       <div>Name: {drawerEvent.roleName}</div>
                     )}
+                    {drawerEvent.tokensUsed !== undefined && drawerEvent.tokensUsed > 0 && (
+                      <div>Tokens: {drawerEvent.tokensUsed.toLocaleString()}</div>
+                    )}
+                    {drawerEvent.estimatedCostCents !== undefined && (
+                      <div>Cost: {formatCents(drawerEvent.estimatedCostCents)}</div>
+                    )}
+                    {drawerEvent.latencyMs !== undefined && (
+                      <div>Latency: {formatElapsed(drawerEvent.latencyMs)}</div>
+                    )}
                     {drawerEvent.evidence && (
-                      <div className="flex items-center gap-1 text-blue-500">
-                        <ExternalLink className="h-3 w-3" />
-                        <span>Evidence: {drawerEvent.evidence}</span>
-                      </div>
+                      <EvidenceLink
+                        evidence={drawerEvent.evidence}
+                        className="text-blue-500"
+                      />
                     )}
                     <div>
                       Severity:{" "}

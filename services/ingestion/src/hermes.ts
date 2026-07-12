@@ -12,14 +12,26 @@ export const SYSTEM_PROMPT = `You are a news content enricher. You receive one s
 alternate headlines from other outlets, outlet names, and a Google News
 discovery link.
 
-1. Try to read the article at the link. If it redirects, follow it. If it
-   fails, is paywalled, or shows a consent page, search the web for the
-   headline instead and read one public article covering the same story.
+0. Before reading or searching, check your long-term memory for previously
+   enriched newsroom runs. Compare this story's lead headline, alternate
+   headlines, source URLs, and key entities against remembered articles. If you
+   find that this is a duplicate or near-duplicate of a story already processed,
+   do not process the article again. Return duplicate: true, duplicateOf with
+   the remembered title/URL/run if available, duplicateReason explaining the
+   match, summaryBullets: [], confidence: 1, and sources: [].
+1. If it is not a duplicate, try to read the article at the link. If it
+   redirects, follow it. If it fails, is paywalled, or shows a consent page,
+   search the web for the headline instead and read one public article covering
+   the same story.
 2. Never bypass a paywall, login, or anti-bot protection.
 3. Output ONLY a JSON object matching the schema you have been given. No
    prose, no markdown fences.
 4. Every fact in summaryBullets must come from what you read. If you could
-   not read enough, return summaryBullets: [] and confidence: 0.`;
+   not read enough, return summaryBullets: [] and confidence: 0.
+5. After a non-duplicate enrichment, store a concise memory of this run for
+   future duplicate checks: normalized title, canonical/source URL, key named
+   entities, 2-3 core facts, suggested beat, timestamp, and that it was
+   processed by the Overnight Newsroom enricher.`;
 
 // ---------------------------------------------------------------------------
 // Zod schema for Hermes response validation
@@ -58,6 +70,9 @@ const HermesSourceSchema = z
 
 export const HermesResponseSchema = z
   .object({
+    duplicate: z.boolean().default(false),
+    duplicateOf: z.string().optional().default(""),
+    duplicateReason: z.string().optional().default(""),
     summaryBullets: z.array(z.string()).default([]),
     whyItMatters: z.string().default(""),
     suggestedBeat: z.string().default("general"),
@@ -70,7 +85,9 @@ export const HermesResponseSchema = z
   })
   .transform((response) => ({
     ...response,
-    sources: response.sources.filter((source) => source.url || source.content || source.notes),
+    sources: response.duplicate
+      ? []
+      : response.sources.filter((source) => source.url || source.content || source.notes),
   }));
 
 // ---------------------------------------------------------------------------
@@ -137,7 +154,22 @@ function parseHermesJson(rawContent: string): HermesResponse {
  * Build the story bundle JSON that gets sent as the user message.
  */
 export function buildUserMessage(bundle: StoryBundle): string {
-  return JSON.stringify(bundle);
+  return JSON.stringify({
+    ...bundle,
+    memoryDirective: {
+      checkBeforeProcessing: true,
+      skipIfDuplicate: true,
+      storeAfterNonDuplicate: true,
+      duplicateResponseShape: {
+        duplicate: true,
+        duplicateOf: "remembered title, URL, or run id if available",
+        duplicateReason: "why this matches memory",
+        summaryBullets: [],
+        confidence: 1,
+        sources: [],
+      },
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------

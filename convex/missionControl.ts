@@ -15,6 +15,60 @@ function checkSecret(secret: string) {
   }
 }
 
+function numberFrom(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function parseRedactedMetrics(dataRedacted: string | undefined): {
+  tokensUsed?: number;
+  estimatedCostCents?: number;
+  latencyMs?: number;
+} {
+  if (!dataRedacted) return {};
+  try {
+    const parsed = JSON.parse(dataRedacted) as Record<string, unknown>;
+    const inputTokens = numberFrom(parsed.inputTokens) ?? 0;
+    const outputTokens = numberFrom(parsed.outputTokens) ?? 0;
+    return {
+      tokensUsed:
+        numberFrom(parsed.totalTokens) ??
+        numberFrom(parsed.tokensUsed) ??
+        (inputTokens + outputTokens || undefined),
+      estimatedCostCents:
+        numberFrom(parsed.estimatedCostCents) ??
+        numberFrom(parsed.costCents),
+      latencyMs:
+        numberFrom(parsed.latencyMs) ??
+        numberFrom(parsed.durationMs) ??
+        numberFrom(parsed.elapsedMs) ??
+        numberFrom(parsed.latency) ??
+        numberFrom(parsed.duration),
+    };
+  } catch {
+    return {};
+  }
+}
+
+function traceLatencyMs(trace: {
+  latencyMs?: number;
+  startedAt?: number;
+  finishedAt?: number;
+}): number | undefined {
+  if (typeof trace.latencyMs === "number" && Number.isFinite(trace.latencyMs) && trace.latencyMs > 0) {
+    return trace.latencyMs;
+  }
+  if (
+    typeof trace.startedAt === "number" &&
+    typeof trace.finishedAt === "number" &&
+    trace.finishedAt >= trace.startedAt
+  ) {
+    return trace.finishedAt - trace.startedAt;
+  }
+  return typeof trace.latencyMs === "number" && Number.isFinite(trace.latencyMs)
+    ? trace.latencyMs
+    : undefined;
+}
+
 // ===========================================================================
 // Mutations (internal — called by Hermes / ingestion service)
 // ===========================================================================
@@ -135,6 +189,9 @@ const eventSchema = v.object({
   ),
   createdAt: v.number(),
   evidence: v.optional(v.string()),
+  tokensUsed: v.optional(v.number()),
+  estimatedCostCents: v.optional(v.number()),
+  latencyMs: v.optional(v.number()),
 });
 
 /** Typed agent row for the left pane. */
@@ -223,6 +280,9 @@ export type MissionControlPayload = {
     severity: string;
     createdAt: number;
     evidence?: string;
+    tokensUsed?: number;
+    estimatedCostCents?: number;
+    latencyMs?: number;
   }>;
   editionsToday: number;
   editionsList: Array<{ editionKey: string; title: string; status: string; createdAt: number }>;
@@ -419,8 +479,13 @@ export const getMissionControl = query({
         (sum, tn) => sum + (tn.tokensUsed ?? 0),
         0,
       );
-      const eicTotalCost = eicTraces.reduce(
+      const eicTraceCost = eicTraces.reduce(
         (sum, tn) => sum + (tn.estimatedCostCents ?? 0),
+        0,
+      );
+      const eicTotalCost = eicTraceCost || plan.costCents;
+      const eicTotalLatency = eicTraces.reduce(
+        (sum, tn) => sum + (traceLatencyMs(tn) ?? 0),
         0,
       );
 
@@ -438,7 +503,7 @@ export const getMissionControl = query({
         assignment: plan.editorialDirection.slice(0, 80),
         status: eicRunningTrace ? "running" : plan ? "completed" : "idle",
         isEditorInChief: true,
-        latencyMs: eicRunningTrace?.latencyMs,
+        latencyMs: eicRunningTrace ? traceLatencyMs(eicRunningTrace) : (eicTotalLatency || undefined),
         totalTokens: eicTotalTokens,
         totalCostCents: eicTotalCost,
         traceNodeCount: eicTraces.length,
@@ -451,14 +516,25 @@ export const getMissionControl = query({
       const roleTraces = traceNodes.filter(
         (tn) => tn.roleId === spec.roleId,
       );
-      const totalTokens = roleTraces.reduce(
+      const traceTokens = roleTraces.reduce(
         (sum, tn) => sum + (tn.tokensUsed ?? 0),
         0,
       );
-      const totalCost = roleTraces.reduce(
+      const traceCost = roleTraces.reduce(
         (sum, tn) => sum + (tn.estimatedCostCents ?? 0),
         0,
       );
+      const traceLatency = roleTraces.reduce(
+        (sum, tn) => sum + (traceLatencyMs(tn) ?? 0),
+        0,
+      );
+      const totalTokens = wr?.tokensUsed && wr.tokensUsed > 0 ? wr.tokensUsed : traceTokens;
+      const totalCost = wr?.estimatedCostCents && wr.estimatedCostCents > 0
+        ? wr.estimatedCostCents
+        : traceCost;
+      const totalLatency = wr?.latencyMs && wr.latencyMs > 0
+        ? wr.latencyMs
+        : traceLatency;
 
       // Determine agent status from trace nodes and worker results
       let agentStatus = "pending";
@@ -493,7 +569,7 @@ export const getMissionControl = query({
         assignment: spec.mission.slice(0, 80),
         status: agentStatus,
         isEditorInChief: false,
-        latencyMs: wr?.latencyMs,
+        latencyMs: totalLatency || undefined,
         totalTokens,
         totalCostCents: totalCost,
         traceNodeCount: roleTraces.length,
@@ -509,15 +585,18 @@ export const getMissionControl = query({
       const roleTraces = traceNodes.filter(
         (tn) => tn.roleId === wr.roleId,
       );
-      const totalTokens =
-        wr.tokensUsed +
-        roleTraces.reduce((sum, tn) => sum + (tn.tokensUsed ?? 0), 0);
-      const totalCost =
-        wr.estimatedCostCents +
-        roleTraces.reduce(
-          (sum, tn) => sum + (tn.estimatedCostCents ?? 0),
-          0,
-        );
+      const traceTokens = roleTraces.reduce((sum, tn) => sum + (tn.tokensUsed ?? 0), 0);
+      const traceCost = roleTraces.reduce(
+        (sum, tn) => sum + (tn.estimatedCostCents ?? 0),
+        0,
+      );
+      const traceLatency = roleTraces.reduce(
+        (sum, tn) => sum + (traceLatencyMs(tn) ?? 0),
+        0,
+      );
+      const totalTokens = wr.tokensUsed > 0 ? wr.tokensUsed : traceTokens;
+      const totalCost = wr.estimatedCostCents > 0 ? wr.estimatedCostCents : traceCost;
+      const totalLatency = wr.latencyMs > 0 ? wr.latencyMs : traceLatency;
 
       let agentStatus = "completed";
       if (wr.validationStatus === "invalid") {
@@ -533,7 +612,7 @@ export const getMissionControl = query({
         assignment: wr.title.slice(0, 80),
         status: agentStatus,
         isEditorInChief: false,
-        latencyMs: wr.latencyMs,
+        latencyMs: totalLatency || undefined,
         totalTokens,
         totalCostCents: totalCost,
         traceNodeCount: roleTraces.length,
@@ -596,8 +675,71 @@ export const getMissionControl = query({
     const isEditionDone =
       edition?.status === "published" || edition?.status === "archived";
 
+    const normalizeTitle = (value: string | undefined) =>
+      (value ?? "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+    const urlsForEditionStory = (story: any) =>
+      new Set(
+        [story.sourceUrl, story.canonicalPublisherUrl, story.receiptUrl]
+          .filter(Boolean)
+          .map((url: string) => url.trim()),
+      );
+    const findPublishedWorkerForStory = (story: any) => {
+      const storyTitle = normalizeTitle(story.title);
+      const storyUrls = urlsForEditionStory(story);
+      const storyClusterId = story.clusterId?.toString();
+
+      return workerResults.find((wr: any) => {
+        const spec = roleSpecByRoleId.get(wr.roleId);
+        if (storyClusterId && spec?.assignedClusterIds?.includes(storyClusterId)) {
+          return true;
+        }
+
+        const workerUrls = new Set(
+          (wr.sourceUrls ?? [])
+            .filter(Boolean)
+            .map((url: string) => url.trim()),
+        );
+        for (const url of storyUrls) {
+          if (workerUrls.has(url)) return true;
+        }
+
+        const workerTitle = normalizeTitle(wr.title);
+        return Boolean(workerTitle && storyTitle && workerTitle === storyTitle);
+      });
+    };
+
+    const publishedWorkerByStoryKey = new Map<string, any>();
+    const publishedRoleIds = new Set<string>();
+    const publishedResultIds = new Set<string>();
+    for (const [storyKey, es] of editionStoryMap) {
+      const wr = findPublishedWorkerForStory(es);
+      if (!wr) continue;
+      publishedWorkerByStoryKey.set(storyKey, wr);
+      publishedRoleIds.add(wr.roleId);
+      publishedResultIds.add(wr.resultId);
+    }
+
+    const rolesWithDrafts = new Set(workerResults.map((wr: any) => wr.roleId));
+    const rolesWithClaims = new Set(claims.map((claim: any) => claim.roleId));
+    const rolesWithVoice = new Set(
+      audioSegments
+        .map((segment: any) => workerResults[segment.turnIndex]?.roleId)
+        .filter(Boolean),
+    );
+
     // ── Planned: role specs / assignments ─────────────────────
     for (const spec of roleSpecs) {
+      if (
+        rolesWithDrafts.has(spec.roleId) ||
+        rolesWithClaims.has(spec.roleId) ||
+        rolesWithVoice.has(spec.roleId) ||
+        publishedRoleIds.has(spec.roleId)
+      ) {
+        continue;
+      }
       const assigned = spec.assignedClusterIds.length > 0
         ? spec.assignedClusterIds
         : [`${spec.roleId}-assignment`];
@@ -617,6 +759,15 @@ export const getMissionControl = query({
 
     // ── Reporting: agent session traces ───────────────────────
     for (const tn of traceNodes.filter((t: any) => t.kind === "agent_session" && t.roleId)) {
+      if (
+        tn.status !== "running" &&
+        (rolesWithDrafts.has(tn.roleId!) ||
+          rolesWithClaims.has(tn.roleId!) ||
+          rolesWithVoice.has(tn.roleId!) ||
+          publishedRoleIds.has(tn.roleId!))
+      ) {
+        continue;
+      }
       const spec = roleSpecByRoleId.get(tn.roleId!);
       storyBoard["reporting"].push({
         storyId: `reporting:${tn.nodeId}`,
@@ -631,9 +782,15 @@ export const getMissionControl = query({
     }
 
     // If no traces exist yet, show role specs that are not drafted as pending reporting.
-    const rolesWithDrafts = new Set(workerResults.map((wr: any) => wr.roleId));
     for (const spec of roleSpecs) {
-      if (rolesWithDrafts.has(spec.roleId)) continue;
+      if (
+        rolesWithDrafts.has(spec.roleId) ||
+        rolesWithClaims.has(spec.roleId) ||
+        rolesWithVoice.has(spec.roleId) ||
+        publishedRoleIds.has(spec.roleId)
+      ) {
+        continue;
+      }
       storyBoard["reporting"].push({
         storyId: `reporting-pending:${spec.roleId}`,
         title: spec.mission || spec.name,
@@ -648,6 +805,14 @@ export const getMissionControl = query({
 
     // ── Drafting: worker results / generated drafts ───────────
     for (const wr of workerResults) {
+      if (
+        publishedResultIds.has(wr.resultId) ||
+        publishedRoleIds.has(wr.roleId) ||
+        rolesWithClaims.has(wr.roleId) ||
+        rolesWithVoice.has(wr.roleId)
+      ) {
+        continue;
+      }
       const spec = roleSpecByRoleId.get(wr.roleId);
       storyBoard["drafting"].push({
         storyId: `draft:${wr.resultId}`,
@@ -663,6 +828,9 @@ export const getMissionControl = query({
 
     // ── Fact Check: claims + verdicts ─────────────────────────
     for (const claim of claims) {
+      if (publishedRoleIds.has(claim.roleId) || rolesWithVoice.has(claim.roleId)) {
+        continue;
+      }
       const verdict = verdictByClaimId.get(claim.claimId);
       const spec = roleSpecByRoleId.get(claim.roleId);
       storyBoard["fact_check"].push({
@@ -695,6 +863,7 @@ export const getMissionControl = query({
     // ── Voice: audio render artifacts ─────────────────────────
     for (const segment of audioSegments) {
       const wr = workerResults[segment.turnIndex];
+      if (wr && publishedRoleIds.has(wr.roleId)) continue;
       const spec = wr ? roleSpecByRoleId.get(wr.roleId) : undefined;
       storyBoard["voice"].push({
         storyId: `voice:${segment.segmentId}`,
@@ -711,15 +880,17 @@ export const getMissionControl = query({
     // ── Publish/Done: edition story artifacts ─────────────────
     for (const [storyKey, es] of editionStoryMap) {
       const stage = isEditionDone ? "done" : "publish";
+      const wr = publishedWorkerByStoryKey.get(storyKey);
+      const spec = wr ? roleSpecByRoleId.get(wr.roleId) : undefined;
       storyBoard[stage].push({
         storyId: `${stage}:${storyKey}`,
         title: es.title,
         stage,
-        roleId: undefined,
-        roleName: es.canonicalPublisherName ?? undefined,
-        beat: undefined,
-        confidence: undefined,
-        clusterId: es.clusterId?.toString(),
+        roleId: wr?.roleId,
+        roleName: spec?.name ?? wr?.roleId ?? es.canonicalPublisherName ?? undefined,
+        beat: wr?.beat,
+        confidence: wr?.confidence,
+        clusterId: es.clusterId?.toString() ?? spec?.assignedClusterIds?.[0],
       });
     }
 
@@ -845,6 +1016,9 @@ export const getMissionControl = query({
         severity: tn.status === "failed" ? "error" : "info",
         createdAt: tn.startedAt,
         evidence: tn.evidence,
+        tokensUsed: tn.tokensUsed,
+        estimatedCostCents: tn.estimatedCostCents,
+        latencyMs: traceLatencyMs(tn),
       });
     }
 
@@ -875,6 +1049,7 @@ export const getMissionControl = query({
 
     // 3. System events
     for (const se of systemEvents) {
+      const metrics = parseRedactedMetrics(se.dataRedacted);
       events.push({
         id: se.eventId,
         type: se.type,
@@ -884,6 +1059,9 @@ export const getMissionControl = query({
         severity: se.severity,
         createdAt: se.createdAt,
         evidence: se.dataRedacted,
+        tokensUsed: metrics.tokensUsed,
+        estimatedCostCents: metrics.estimatedCostCents,
+        latencyMs: metrics.latencyMs,
       });
     }
 
@@ -900,6 +1078,9 @@ export const getMissionControl = query({
           severity: "info",
           createdAt: wr.createdAt,
           evidence: undefined,
+          tokensUsed: wr.tokensUsed,
+          estimatedCostCents: wr.estimatedCostCents,
+          latencyMs: wr.latencyMs,
         });
       }
 
@@ -913,6 +1094,9 @@ export const getMissionControl = query({
           severity: "warning",
           createdAt: wr.createdAt,
           evidence: undefined,
+          tokensUsed: wr.tokensUsed,
+          estimatedCostCents: wr.estimatedCostCents,
+          latencyMs: wr.latencyMs,
         });
       }
     }
@@ -930,12 +1114,15 @@ export const getMissionControl = query({
 
     // ── Aggregate stats ───────────────────────────────────────
 
-    const totalCostCents =
-      (plan?.costCents ?? 0) +
-      agents.reduce((sum, a) => sum + (a.totalCostCents ?? 0), 0);
+    const totalCostCents = agents.reduce(
+      (sum, a) => sum + (a.totalCostCents ?? 0),
+      0,
+    );
 
     const totalTokens =
       agents.reduce((sum, a) => sum + (a.totalTokens ?? 0), 0);
+
+    const agentsWithLatency = agents.filter((a) => a.latencyMs !== undefined);
 
     // ── Editions today count (accurate) ───────────────────────
     let editionsTodayAccurate = 0;
@@ -956,8 +1143,8 @@ export const getMissionControl = query({
         activeAgents: agents.filter((a) => a.status === "running").length,
         totalCostCents,
         totalTokens,
-        averageLatencyMs: agents.length > 0
-          ? agents.reduce((sum, a) => sum + (a.latencyMs ?? 0), 0) / agents.filter(a => a.latencyMs).length
+        averageLatencyMs: agentsWithLatency.length > 0
+          ? agentsWithLatency.reduce((sum, a) => sum + (a.latencyMs ?? 0), 0) / agentsWithLatency.length
           : 0,
       },
       editionsToday: editionsTodayAccurate,
@@ -978,10 +1165,21 @@ export const getRoleTrace = query({
       .order("asc")
       .collect();
 
-    // Filter for this role and its tool steps
-    const roleTraces = traces.filter(
-      (tn) => tn.roleId === args.roleId || tn.parentNodeId === args.roleId,
+    // Filter for this role plus descendant tool/manager/judge nodes. Some
+    // child trace nodes only store parentNodeId (the trace node id), not roleId.
+    const roleNodeIds = new Set(
+      traces
+        .filter((tn) => tn.roleId === args.roleId || tn.nodeId === args.roleId)
+        .map((tn) => tn.nodeId),
     );
+    const roleTraces = traces.filter((tn) => {
+      if (tn.roleId === args.roleId || tn.nodeId === args.roleId) return true;
+      if (tn.parentNodeId && (tn.parentNodeId === args.roleId || roleNodeIds.has(tn.parentNodeId))) {
+        roleNodeIds.add(tn.nodeId);
+        return true;
+      }
+      return false;
+    });
 
     return roleTraces.map((tn) => ({
       nodeId: tn.nodeId,
@@ -994,7 +1192,6 @@ export const getRoleTrace = query({
       kind: tn.kind,
       tokensUsed: tn.tokensUsed,
       estimatedCostCents: tn.estimatedCostCents,
-      latencyMs: tn.latencyMs,
       inputSummary: tn.inputSummary,
       outputSummary: tn.outputSummary,
       evidence: tn.evidence,
@@ -1002,6 +1199,7 @@ export const getRoleTrace = query({
       errorMessage: tn.errorMessage,
       startedAt: tn.startedAt,
       finishedAt: tn.finishedAt,
+      latencyMs: traceLatencyMs(tn),
     }));
   },
 });

@@ -54,7 +54,8 @@ export default defineSchema({
       v.literal("claimed"),
       v.literal("summarized"),
       v.literal("thin"),
-      v.literal("failed")
+      v.literal("failed"),
+      v.literal("duplicate")
     ),
     claimedAt: v.optional(v.number()),
     summaryBullets: v.optional(v.array(v.string())),
@@ -105,7 +106,8 @@ export default defineSchema({
       v.literal("success"),
       v.literal("failed"),
       v.literal("timeout"),
-      v.literal("parse_error")
+      v.literal("parse_error"),
+      v.literal("duplicate")
     ),
     startedAt: v.number(),
     finishedAt: v.optional(v.number()),

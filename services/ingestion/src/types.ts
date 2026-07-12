@@ -56,6 +56,9 @@ export interface HermesSource {
 }
 
 export interface HermesResponse {
+  duplicate: boolean;
+  duplicateOf: string;
+  duplicateReason: string;
   summaryBullets: string[];
   whyItMatters: string;
   suggestedBeat: string;

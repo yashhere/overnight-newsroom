@@ -1058,10 +1058,21 @@ describe("S3: Editorial quality", () => {
           latencyMs: 10,
           ok: true,
           httpStatus: 200,
+        })
+        // Manager re-review call — accepts revised draft
+        .mockResolvedValueOnce({
+          rawContent: JSON.stringify({
+            decision: "accept",
+            commentary: "Revision resolves the sourcing concerns.",
+          }),
+          usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 },
+          latencyMs: 10,
+          ok: true,
+          httpStatus: 200,
         });
 
       const { results, loops, memories } = await runWorkersWithReview(
-        plan,
+        { ...plan, roles: plan.roles.slice(0, 1) },
         generalCandidates.slice(0, 1),
         hermes
       );

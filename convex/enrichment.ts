@@ -197,6 +197,98 @@ export const saveEnrichment = mutation({
 });
 
 // ---------------------------------------------------------------------------
+// markDuplicate
+//
+// Suppresses a cluster when Hermes memory says the article was already
+// processed. We still record the Hermes call and event for audit/cost.
+// ---------------------------------------------------------------------------
+export const markDuplicate = mutation({
+  args: {
+    secret: v.string(),
+    clusterId: v.id("storyClusters"),
+    callId: v.string(),
+    runId: v.optional(v.string()),
+    duplicateOf: v.optional(v.string()),
+    duplicateReason: v.string(),
+    // Hermes call fields
+    hermesCallStartedAt: v.number(),
+    hermesCallFinishedAt: v.number(),
+    hermesCallLatencyMs: v.number(),
+    hermesCallHttpStatus: v.optional(v.number()),
+    hermesCallModel: v.string(),
+    hermesCallPromptVersion: v.string(),
+    hermesCallBaseUrlHost: v.string(),
+    hermesCallInputTokens: v.optional(v.number()),
+    hermesCallOutputTokens: v.optional(v.number()),
+    hermesCallTotalTokens: v.optional(v.number()),
+    hermesCallUsageSource: v.union(
+      v.literal("provider"),
+      v.literal("estimated"),
+      v.literal("none")
+    ),
+    hermesCallEstimatedCostCents: v.optional(v.number()),
+    hermesCallRequestSummary: v.string(),
+    hermesCallResponseSummary: v.string(),
+  },
+  handler: async (ctx, args) => {
+    checkSecret(args.secret);
+
+    const now = Date.now();
+    const duplicateSummary = JSON.stringify({
+      duplicateOf: args.duplicateOf,
+      duplicateReason: args.duplicateReason,
+    }).slice(0, 500);
+
+    await ctx.db.patch(args.clusterId, {
+      status: "suppressed",
+      summaryStatus: "duplicate",
+      latestHermesCallId: args.callId,
+      updatedAt: now,
+    });
+
+    await ctx.db.insert("hermesCalls", {
+      callId: args.callId,
+      runId: args.runId,
+      clusterId: args.clusterId,
+      purpose: "rss_summary",
+      provider: "hermes_openai_compat",
+      baseUrlHost: args.hermesCallBaseUrlHost,
+      model: args.hermesCallModel,
+      promptVersion: args.hermesCallPromptVersion,
+      status: "duplicate",
+      startedAt: args.hermesCallStartedAt,
+      finishedAt: args.hermesCallFinishedAt,
+      latencyMs: args.hermesCallLatencyMs,
+      httpStatus: args.hermesCallHttpStatus,
+      inputTokens: args.hermesCallInputTokens,
+      outputTokens: args.hermesCallOutputTokens,
+      totalTokens: args.hermesCallTotalTokens,
+      usageSource: args.hermesCallUsageSource,
+      estimatedCostCents: args.hermesCallEstimatedCostCents,
+      requestSummary: args.hermesCallRequestSummary,
+      responseSummary: args.hermesCallResponseSummary,
+      errorClass: "duplicate",
+      errorMessage: duplicateSummary,
+    });
+
+    await ctx.db.insert("events", {
+      eventId: `${args.callId}-duplicate`,
+      runId: args.runId,
+      clusterId: args.clusterId,
+      hermesCallId: args.callId,
+      family: "enrichment",
+      type: "enrich_duplicate",
+      severity: "info",
+      message: `Cluster ${args.clusterId} skipped as duplicate: ${args.duplicateReason}`,
+      dataRedacted: duplicateSummary,
+      createdAt: now,
+    });
+
+    return { status: "duplicate" };
+  },
+});
+
+// ---------------------------------------------------------------------------
 // markThin
 //
 // Marks a cluster as thin/failed after a Hermes call failure.
