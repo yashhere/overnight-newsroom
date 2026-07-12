@@ -635,6 +635,61 @@ export const getMissionControl = query({
       });
     }
 
+    // ── 4. Discovered clusters (not yet assigned to any role) ──
+
+    // Collect all cluster IDs already in the kanban
+    const usedClusterIds = new Set<string>();
+    for (const stage of Object.keys(storyBoard)) {
+      for (const card of storyBoard[stage]) {
+        if (card.clusterId) usedClusterIds.add(card.clusterId);
+      }
+    }
+    // Also collect cluster IDs from assignedClusterIds in roleSpecs
+    for (const spec of roleSpecs) {
+      for (const cid of spec.assignedClusterIds) {
+        usedClusterIds.add(cid);
+      }
+    }
+
+    // Fetch all recent story clusters from the ingestion pipeline
+    const discoveredClusters = await ctx.db
+      .query("storyClusters")
+      .withIndex("by_status_lastSeenAt", (q: any) =>
+        q.eq("status", "discovered"),
+      )
+      .order("desc")
+      .take(30);
+
+    const summarizedClusters = await ctx.db
+      .query("storyClusters")
+      .withIndex("by_summaryStatus_lastSeenAt", (q: any) =>
+        q.eq("summaryStatus", "summarized"),
+      )
+      .order("desc")
+      .take(30);
+
+    const allClusters = [...discoveredClusters, ...summarizedClusters];
+
+    // Add clusters that aren't yet in the kanban to the discovered column
+    const seenClusterIds = new Set<string>();
+    for (const cluster of allClusters) {
+      const cid = cluster._id.toString();
+      if (usedClusterIds.has(cid)) continue;
+      if (seenClusterIds.has(cid)) continue;
+      seenClusterIds.add(cid);
+
+      storyBoard["discovered"].push({
+        storyId: cid,
+        title: cluster.leadTitle,
+        stage: "discovered",
+        roleId: undefined,
+        roleName: undefined,
+        beat: cluster.beats[0],
+        confidence: cluster.summaryConfidence,
+        clusterId: cid,
+      });
+    }
+
     // ── Deduplicate kanban cards by storyId ──
     for (const stage of Object.keys(storyBoard)) {
       const seen = new Set<string>();
