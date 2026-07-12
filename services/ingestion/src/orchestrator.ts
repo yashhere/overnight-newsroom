@@ -4,7 +4,7 @@
 // publishes editions. Retries on failure.
 // ---------------------------------------------------------------------------
 
-import "dotenv/config";
+import { config } from "dotenv"; config({ path: ".env.local" });
 import { randomUUID } from "node:crypto";
 import { ConvexHttpClient } from "convex/browser";
 
@@ -144,6 +144,8 @@ async function runEdition(): Promise<boolean> {
   }));
 
   const editionKey = `edition-${Date.now()}`;
+  const onceMode = process.argv.includes("--once");
+  const maxRoles = process.argv.includes("--one") ? 1 : 4;
 
   // 3. Derive editorial plan
   console.log("[orch] 2. Deriving editorial plan...");
@@ -179,6 +181,7 @@ async function runEdition(): Promise<boolean> {
   // 5. Run workers (sequential — Hermes is slow)
   console.log("[orch] 3. Running workers...");
   const allStories: any[] = [];
+  const rolesToRun = (plan.roles || []).slice(0, maxRoles);
   for (const role of (plan.roles || [])) {
     console.log(`[orch]   Running ${role.roleId || role.name}...`);
     const assignedCandidates = candidates.filter((c: any) =>
@@ -269,7 +272,10 @@ async function runEdition(): Promise<boolean> {
       subtitle: plan.editorialDirection?.slice(0, 120) || `${approved.length} stories from real-time feeds`,
       status: "published",
       publishedAt: Date.now(),
-      stories: approved.map((s: any, i: number) => ({
+      stories: approved.filter((s: any) => {
+        const t = (s.title || "").trim();
+        return t.length > 3 && t !== "..." && t !== "Untitled";
+      }).map((s: any, i: number) => ({
         storyKey: `${editionKey}-${i}`,
         title: s.title,
         summary: s.summaryBullets?.join(". ") || s.summary || "",
@@ -309,10 +315,10 @@ async function main() {
     const now = Date.now();
 
     // Check if enough time has passed since last edition
-    if (now - lastEditionAt >= EDITION_INTERVAL_MS) {
+    if (onceMode || now - lastEditionAt >= EDITION_INTERVAL_MS) {
       try {
         const success = await runEdition();
-        if (success) lastEditionAt = now;
+        if (success) { lastEditionAt = now; if (onceMode) { console.log("[orch] --once mode: exiting after edition"); process.exit(0); } }
       } catch (err: any) {
         console.error(`[orch] Edition failed: ${err.message}`);
         // Wait a bit before retrying
