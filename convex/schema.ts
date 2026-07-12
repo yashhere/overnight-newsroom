@@ -156,5 +156,57 @@ export default defineSchema({
     .index("by_createdAt", ["createdAt"])
     .index("by_runId_createdAt", ["runId", "createdAt"])
     .index("by_family_createdAt", ["family", "createdAt"])
-    .index("by_severity_createdAt", ["severity", "createdAt"])
+    .index("by_severity_createdAt", ["severity", "createdAt"]),
+
+  // ── Public read model ──────────────────────────────────────────
+
+  editions: defineTable({
+    editionKey: v.string(),
+    title: v.string(),
+    subtitle: v.optional(v.string()),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("published"),
+      v.literal("archived")
+    ),
+    publishedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_editionKey", ["editionKey"])
+    .index("by_status_publishedAt", ["status", "publishedAt"]),
+
+  editionStories: defineTable({
+    editionId: v.id("editions"),
+    clusterId: v.optional(v.id("storyClusters")),
+    storyKey: v.string(),
+    title: v.string(),
+    summary: v.string(),
+    summaryBullets: v.optional(v.array(v.string())),
+    canonicalPublisherName: v.optional(v.string()),
+    canonicalPublisherUrl: v.optional(v.string()),
+    sourceUrl: v.optional(v.string()),
+    sourceName: v.optional(v.string()),
+    receiptUrl: v.optional(v.string()),
+    sortOrder: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_editionId_sortOrder", ["editionId", "sortOrder"])
+    .index("by_storyKey", ["storyKey"]),
+
+  publicationReceipts: defineTable({
+    editionId: v.id("editions"),
+    editionKey: v.string(),
+    receiptType: v.union(
+      v.literal("deploy"),
+      v.literal("publish"),
+      v.literal("media")
+    ),
+    receiptUrl: v.optional(v.string()),
+    status: v.string(),
+    metadata: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_editionId", ["editionId"])
+    .index("by_editionKey_receiptType", ["editionKey", "receiptType"]),
 });

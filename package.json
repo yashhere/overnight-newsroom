@@ -16,7 +16,9 @@
     "web:dev": "cd apps/public-site && npm run dev",
     "web:build": "cd apps/public-site && npm run build",
     "web:preview": "cd apps/public-site && npm run preview",
-    "web:lint": "cd apps/public-site && npm run lint"
+    "web:test": "cd apps/public-site && npm run test",
+    "web:lint": "cd apps/public-site && npm run lint",
+    "test": "npm run web:test"
   },
   "dependencies": {
     "convex": "^1.42.1"
