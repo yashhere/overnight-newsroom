@@ -370,4 +370,70 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_evalSet_createdAt", ["evalSet", "createdAt"]),
+
+  // ── Judge (ONR-005) ───────────────────────────────────────────
+
+  claims: defineTable({
+    claimId: v.string(),
+    editionKey: v.string(),
+    claim: v.string(),
+    storyKey: v.string(),
+    roleId: v.string(),
+    sourceLines: v.array(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_editionKey", ["editionKey"])
+    .index("by_storyKey", ["storyKey"]),
+
+  verdicts: defineTable({
+    claimId: v.string(),
+    editionKey: v.string(),
+    verdict: v.union(
+      v.literal("approved"),
+      v.literal("revise"),
+      v.literal("block"),
+      v.literal("escalate")
+    ),
+    reason: v.string(),
+    evidenceJson: v.string(),
+    receiptsCorroborated: v.boolean(),
+    linkupCorroborated: v.boolean(),
+    conflictDetail: v.optional(v.string()),
+    confidence: v.number(),
+    tokensUsed: v.number(),
+    estimatedCostCents: v.number(),
+    latencyMs: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_editionKey", ["editionKey"])
+    .index("by_verdict", ["verdict"]),
+
+  // ── Audio (ONR-006) ───────────────────────────────────────────
+
+  audioSegments: defineTable({
+    segmentId: v.string(),
+    editionKey: v.string(),
+    anchor: v.union(v.literal("A"), v.literal("B")),
+    turnIndex: v.number(),
+    text: v.string(),
+    voiceId: v.string(),
+    durationMs: v.number(),
+    clipUrl: v.string(),
+    costCents: v.number(),
+    latencyMs: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_editionKey_turnIndex", ["editionKey", "turnIndex"]),
+
+  editionAudio: defineTable({
+    editionKey: v.string(),
+    totalDurationMs: v.number(),
+    fullAudioUrl: v.string(),
+    chaptersJson: v.string(),
+    segmentIds: v.array(v.string()),
+    totalCostCents: v.number(),
+    totalLatencyMs: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_editionKey", ["editionKey"]),
 });

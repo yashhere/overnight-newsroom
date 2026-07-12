@@ -262,3 +262,99 @@ export interface NewsroomMemory {
   confidence: number;
   createdAt: number;
 }
+
+// ---------------------------------------------------------------------------
+// Judge types (ONR-005)
+// ---------------------------------------------------------------------------
+
+/** A single atomic claim extracted from a script line. */
+export interface JudgeClaim {
+  claimId: string;
+  editionKey: string;
+  claim: string;
+  storyKey: string;
+  roleId: string;
+  sourceLines: string[];
+}
+
+/** Evidence from a single source. */
+export interface EvidenceReceipt {
+  url: string;
+  name: string;
+  accessed: boolean;
+  excerpt?: string;
+  linkupUsed: boolean;
+  linkupResultCount?: number;
+}
+
+export type ClaimVerdict = "approved" | "revise" | "block" | "escalate";
+
+export interface ClaimVerdictResult {
+  claimId: string;
+  verdict: ClaimVerdict;
+  reason: string;
+  evidence: EvidenceReceipt[];
+  receiptsCorroborated: boolean;
+  linkupCorroborated: boolean;
+  conflictDetail?: string;
+  confidence: number;
+  tokensUsed: number;
+  estimatedCostCents: number;
+  latencyMs: number;
+}
+
+export interface JudgeResult {
+  editionKey: string;
+  verdicts: ClaimVerdictResult[];
+  approved: number;
+  blocked: number;
+  revised: number;
+  escalated: number;
+  totalTokensUsed: number;
+  totalCostCents: number;
+  totalLatencyMs: number;
+}
+
+// ---------------------------------------------------------------------------
+// Audio pipeline types (ONR-006)
+// ---------------------------------------------------------------------------
+
+export interface AnchorTurn {
+  anchor: "A" | "B";
+  text: string;
+  pronunciation?: string;
+  isChapterStart: boolean;
+  storyKey?: string;
+}
+
+export interface AudioScript {
+  editionKey: string;
+  language: "en" | "hi";
+  turns: AnchorTurn[];
+  wordCount: number;
+  chapterMap: Record<string, number>;
+}
+
+export interface AudioSegment {
+  segmentId: string;
+  editionKey: string;
+  anchor: "A" | "B";
+  turnIndex: number;
+  text: string;
+  voiceId: string;
+  durationMs: number;
+  clipUrl: string;
+  costCents: number;
+  latencyMs: number;
+  createdAt: number;
+}
+
+export interface EditionAudio {
+  editionKey: string;
+  totalDurationMs: number;
+  fullAudioUrl: string;
+  chapters: Array<{ storyKey: string; startMs: number; title: string }>;
+  segments: AudioSegment[];
+  totalCostCents: number;
+  totalLatencyMs: number;
+}
