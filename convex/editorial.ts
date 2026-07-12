@@ -452,7 +452,7 @@ export const getRecentMemories = query({
     if (args.kind) {
       return await ctx.db
         .query("newsroomMemory")
-        .withIndex("by_kind_createdAt", (q) => q.eq("kind", args.kind))
+        .withIndex("by_kind_createdAt", (q) => q.eq("kind", args.kind as "lesson" | "role_pattern" | "editorial_rule" | "guardrail"))
         .order("desc")
         .take(max);
     }

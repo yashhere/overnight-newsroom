@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ExternalLink, Newspaper, Calendar, Clock, Radio } from "lucide-react";
+import { ExternalLink, Newspaper, Calendar, Clock, Radio, Activity } from "lucide-react";
 import { useLatestEdition } from "@/hooks/useEditions";
 
 function formatTime(ts: number | undefined): string {
@@ -285,8 +285,8 @@ export function HomePage() {
 					{/* Receipts */}
 					<ReceiptBar receipts={data.receipts} />
 
-					{/* Navigation footer */}
-					<div className="mt-10 flex justify-center">
+		{/* Navigation footer */}
+					<div className="mt-10 flex justify-center gap-3">
 						<Button variant="outline" size="sm" asChild>
 							<Link
 								to={`/editions/${data.edition.editionKey}`}
@@ -294,6 +294,12 @@ export function HomePage() {
 							>
 								<ExternalLink className="h-3.5 w-3.5" />
 								Permalink to this edition
+							</Link>
+						</Button>
+						<Button variant="outline" size="sm" asChild>
+							<Link to="/mission-control" className="gap-1.5">
+								<Activity className="h-3.5 w-3.5" />
+								Mission Control
 							</Link>
 						</Button>
 					</div>
