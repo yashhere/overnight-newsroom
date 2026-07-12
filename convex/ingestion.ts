@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, internalQuery } from "./_generated/server";
+import { mutation, internalQuery, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 
 declare const process: { env: Record<string, string | undefined> };
@@ -270,5 +270,17 @@ export const getHealthSnapshot = internalQuery({
       lastRunId: lastRun?.runId ?? null,
       lastRunStatus: lastRun?.status ?? null,
     };
+  },
+});
+
+/** List summarized clusters for the orchestrator. */
+export const listSummarized = query({
+  args: { max: v.number() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("storyClusters")
+      .withIndex("by_status_lastSeenAt", (q) => q.eq("status", "summarized"))
+      .order("desc")
+      .take(args.max);
   },
 });

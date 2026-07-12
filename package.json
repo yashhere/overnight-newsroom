@@ -20,7 +20,11 @@
     "web:test": "cd apps/public-site && npm run test",
     "web:lint": "cd apps/public-site && npm run lint",
     "test": "npm run svc:test && npm run web:test",
-    "evals:editorial": "npx tsx services/evals/editorial.eval.ts"
+    "evals:editorial": "npx tsx services/evals/editorial.eval.ts",
+    "orch": "npx tsx services/ingestion/src/orchestrator.ts",
+    "demo": "npx tsx services/evals/demo.ts",
+    "demo:audio": "npx tsx services/evals/live-audio.ts",
+    "demo:editorial": "npx tsx services/evals/live-e2e.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1085.0",
